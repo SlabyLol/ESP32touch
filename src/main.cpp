@@ -3,7 +3,7 @@
 
 TFT_eSPI tft = TFT_eSPI();
 
-#define TFT_BL_PIN 21   // Backlight-Pin beim CYD
+#define TFT_BL_PIN 27   // Backlight-Pin beim ESP32-2432S032
 
 void setup() {
   pinMode(TFT_BL_PIN, OUTPUT);
