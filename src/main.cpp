@@ -1,24 +1,27 @@
-#include <Arduino.h>
 #include <TFT_eSPI.h>
+#include <SPI.h>
 
 TFT_eSPI tft = TFT_eSPI();
 
-void setup()
-{
-    Serial.begin(115200);
+#define TFT_BL_PIN 21   // Backlight-Pin beim CYD
 
-    tft.init();
-    tft.setRotation(1);
+void setup() {
+  pinMode(TFT_BL_PIN, OUTPUT);
+  digitalWrite(TFT_BL_PIN, HIGH);
 
-    tft.fillScreen(TFT_BLACK);
+  tft.init();
+  tft.setRotation(1);
+  tft.fillScreen(TFT_BLACK);
 
-    tft.setTextDatum(MC_DATUM);
-    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(TFT_ORANGE, TFT_BLACK);
+  tft.setFreeFont(&FreeSansBold24pt7b);
 
-    tft.drawString("DarkFox", 160, 120, 4);
+  int centerX = tft.width() / 2;
+  int centerY = tft.height() / 2;
+
+  tft.drawString("DarkFox", centerX, centerY);
 }
 
-void loop()
-{
-    // Nichts zu tun
+void loop() {
 }
