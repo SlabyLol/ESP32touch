@@ -16,7 +16,6 @@ TFT_eSPI tft = TFT_eSPI();
 #define TOUCH_CS   33
 #define TOUCH_IRQ  36
 
-SPIClass touchSPI(VSPI);
 XPT2046_Touchscreen ts(TOUCH_CS, TOUCH_IRQ);
 
 // ---------- WiFi Portal ----------
@@ -142,9 +141,9 @@ void setup() {
   tft.init();
   tft.setRotation(1);
 
-  // Touch (eigener SPI-Bus!)
-  touchSPI.begin(TOUCH_SCK, TOUCH_MISO, TOUCH_MOSI, TOUCH_CS);
-  ts.begin(touchSPI);
+  // Touch (eigener SPI-Bus, VSPI = globales SPI-Objekt, da TFT auf HSPI laeuft)
+  SPI.begin(TOUCH_SCK, TOUCH_MISO, TOUCH_MOSI, TOUCH_CS);
+  ts.begin();
   ts.setRotation(1);
 
   showDarkFoxScreen();
