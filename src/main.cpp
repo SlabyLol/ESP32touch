@@ -61,11 +61,12 @@ struct KeyButton {
 };
 
 // 3 Spalten x 4 Reihen: 1-9, C(lear), 0, OK
+// Layout fuer Hochformat (240x320) - siehe drawPasswordScreen()
 KeyButton keys[12];
-const int KEY_W = 80;
+const int KEY_W = 70;
 const int KEY_H = 45;
 const int KEY_GAP = 6;
-const int KEYPAD_TOP = 130;
+const int KEYPAD_TOP = 115;
 
 void buildKeypad() {
   const char* labels[12] = {"1","2","3","4","5","6","7","8","9","C","0","OK"};
@@ -93,17 +94,18 @@ void drawKeypad() {
 }
 
 void drawPinDisplay(const String &input) {
-  tft.fillRect(0, 60, tft.width(), 50, TFT_BLACK);
+  tft.fillRect(0, 55, tft.width(), 50, TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
   tft.setFreeFont(&FreeSansBold24pt7b);
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
 
   String masked = "";
   for (unsigned int i = 0; i < input.length(); i++) masked += "*";
-  tft.drawString(masked, tft.width() / 2, 85);
+  tft.drawString(masked, tft.width() / 2, 80);
 }
 
 void drawPasswordScreen() {
+  tft.setRotation(0); // Hochformat (240x320) - genug Platz fuer 4 Tastenreihen
   tft.fillScreen(TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
   tft.setFreeFont(&FreeSans12pt7b);
@@ -139,7 +141,10 @@ bool waitForPin() {
     if (Serial.available()) {
       char c = Serial.read();
       if (c == '\n') {
-        if (input == CONSOLE_PIN) return true;
+        if (input == CONSOLE_PIN) {
+          tft.setRotation(1); // zurueck ins Querformat fuer die Hauptanzeige
+          return true;
+        }
         Serial.println("Falsche PIN, nochmal versuchen.");
         input = "";
         drawPinDisplay(input);
@@ -163,13 +168,12 @@ bool waitForPin() {
         input = "";
         drawPinDisplay(input);
       } else if (key == 'O') {
-        if (input == CONSOLE_PIN) return true;
+        if (input == CONSOLE_PIN) {
+          tft.setRotation(1); // zurueck ins Querformat fuer die Hauptanzeige
+          return true;
+        }
         input = "";
         drawPinDisplay(input);
-        tft.setTextDatum(MC_DATUM);
-        tft.setFreeFont(&FreeSans9pt7b);
-        tft.setTextColor(TFT_RED, TFT_BLACK);
-        tft.fillRect(0, 300, 0, 0, TFT_BLACK); // no-op falls Aufloesung kleiner
       } else if (key >= '0' && key <= '9') {
         input += key;
         drawPinDisplay(input);
