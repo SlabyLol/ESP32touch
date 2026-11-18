@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""DarkFox HomeBrew Packer – echte .py/.cpp/.cs API → .hb"""
+"""DarkFox HomeBrew Packer - echte .py/.cpp/.cs API -> .hb"""
 
 from __future__ import annotations
 
@@ -42,14 +42,15 @@ def pack(title: str, payload: bytes, flags: int = 0) -> bytes:
 
 def transpile(source: str, ext: str) -> str:
     text = source
+    # strip language noise (no fragile nested quotes in regex)
     text = re.sub(r"using\s+[^;]+;", "", text)
-    text = re.sub(r"#include\s+[<\"].+[>\"]", "", text)
+    text = re.sub(r"#include\s+\S+", "", text)
     text = re.sub(r"namespace\s+\w+\s*\{", "", text)
     text = re.sub(r"public\s+class\s+\w+\s*\{", "", text)
     text = re.sub(r"static\s+void\s+Main\s*\([^)]*\)\s*\{", "", text)
     text = re.sub(r"void\s+main\s*\([^)]*\)\s*\{", "", text)
     text = re.sub(r"def\s+main\s*\([^)]*\)\s*:", "", text)
-    text = re.sub(r"if\s+__name__\s*==\s*['\"]__main__['\"]\s*:", "", text)
+    text = re.sub(r'if\s+__name__\s*==\s*["\']__main__["\']\s*:', "", text)
     text = re.sub(r"main\s*\(\s*\)", "", text)
 
     patterns = [
@@ -59,28 +60,28 @@ def transpile(source: str, ext: str) -> str:
         (r"(?:HomeBrew\.|hb\.)?gui_run\s*\(\s*\)", lambda m: "GUI_RUN"),
         (r"(?:HomeBrew\.|hb\.)?wifi\s*\(\s*\)", lambda m: "WIFI"),
         (r"(?:HomeBrew\.|hb\.)?color\s*\(\s*[\"']?([A-Za-z0-9]+)[\"']?\s*\)",
-         lambda m: f"COLOR {m.group(1).upper()}"),
+         lambda m: "COLOR " + m.group(1).upper()),
         (r"(?:HomeBrew\.|hb\.)?bg\s*\(\s*[\"']?([A-Za-z0-9]+)[\"']?\s*\)",
-         lambda m: f"BG {m.group(1).upper()}"),
+         lambda m: "BG " + m.group(1).upper()),
         (r"(?:HomeBrew\.|hb\.)?wait\s*\(\s*(\d+)\s*\)",
-         lambda m: f"WAIT {m.group(1)}"),
+         lambda m: "WAIT " + m.group(1)),
         (r"(?:HomeBrew\.|hb\.)?center\s*\(\s*(\d+)\s*,\s*[\"']([^\"']*)[\"']\s*\)",
-         lambda m: f"CENTER {m.group(1)} {m.group(2)}"),
+         lambda m: "CENTER " + m.group(1) + " " + m.group(2)),
         (r"(?:HomeBrew\.|hb\.)?label\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*[\"']([^\"']*)[\"']\s*\)",
-         lambda m: f"LABEL {m.group(1)} {m.group(2)} {m.group(3)}"),
+         lambda m: "LABEL " + m.group(1) + " " + m.group(2) + " " + m.group(3)),
         (r"(?:HomeBrew\.|hb\.)?text\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*[\"']([^\"']*)[\"']\s*\)",
-         lambda m: f"TEXT {m.group(1)} {m.group(2)} {m.group(3)}"),
+         lambda m: "TEXT " + m.group(1) + " " + m.group(2) + " " + m.group(3)),
         (r"(?:HomeBrew\.|hb\.)?http\s*\(\s*[\"']([^\"']+)[\"']\s*\)",
-         lambda m: f"HTTP {m.group(1)}"),
+         lambda m: "HTTP " + m.group(1)),
         (r"(?:HomeBrew\.|hb\.)?box\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)",
-         lambda m: f"BOX {m.group(1)} {m.group(2)} {m.group(3)} {m.group(4)}"),
+         lambda m: "BOX " + m.group(1) + " " + m.group(2) + " " + m.group(3) + " " + m.group(4)),
         (r"(?:HomeBrew\.|hb\.)?fillbox\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)",
-         lambda m: f"FILLBOX {m.group(1)} {m.group(2)} {m.group(3)} {m.group(4)}"),
+         lambda m: "FILLBOX " + m.group(1) + " " + m.group(2) + " " + m.group(3) + " " + m.group(4)),
         (r"(?:HomeBrew\.|hb\.)?button\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*[\"']([^\"']*)[\"']\s*\)",
-         lambda m: f"BUTTON {m.group(1)} {m.group(2)} {m.group(3)} {m.group(4)} {m.group(5)} {m.group(6)}"),
+         lambda m: "BUTTON " + m.group(1) + " " + m.group(2) + " " + m.group(3) + " " + m.group(4) + " " + m.group(5) + " " + m.group(6)),
     ]
 
-    ir: list[str] = []
+    ir = []
     for chunk in re.split(r"[;\n]", text):
         chunk = chunk.strip()
         if not chunk:
@@ -110,18 +111,18 @@ def find_payload(folder: Path, info: dict) -> Path:
         if not p.is_file():
             raise FileNotFoundError(p)
         if p.suffix.lower() not in ALLOWED_EXT:
-            raise ValueError(f"Nur {ALLOWED_EXT}: {p.name}")
+            raise ValueError("Nur .py .cpp .cs erlaubt: " + p.name)
         return p
     found = []
     for ext in ALLOWED_EXT:
-        found.extend(folder.glob(f"*{ext}"))
+        found.extend(folder.glob("*" + ext))
     uniq, seen = [], set()
     for f in found:
         if f.name.lower() not in seen:
             seen.add(f.name.lower())
             uniq.append(f)
     if len(uniq) != 1:
-        raise FileNotFoundError(f"Quelle in {folder}: {uniq}")
+        raise FileNotFoundError("Quelle in " + str(folder) + ": " + str(uniq))
     return uniq[0]
 
 
@@ -131,12 +132,15 @@ def build_one(folder: Path) -> Path:
     path = find_payload(folder, info)
     ir = transpile(path.read_text(encoding="utf-8"), path.suffix.lower())
     print("    IR:")
-    for l in ir.strip().splitlines():
-        print(f"      {l}")
+    for line in ir.strip().splitlines():
+        print("      " + line)
     meta = (
-        f"# HomeBrew\ntitle={title}\nauthor={info.get('author','')}\n"
-        f"version={info.get('version','1.0')}\ndescription={info.get('description','')}\n"
-        f"lang={path.suffix.lower().lstrip('.')}\n---\n"
+        "# HomeBrew\ntitle=" + title
+        + "\nauthor=" + str(info.get("author", ""))
+        + "\nversion=" + str(info.get("version", "1.0"))
+        + "\ndescription=" + str(info.get("description", ""))
+        + "\nlang=" + path.suffix.lower().lstrip(".")
+        + "\n---\n"
     )
     out_name = str(info.get("output", folder.name + ".hb"))
     if not out_name.endswith(".hb"):
@@ -144,20 +148,22 @@ def build_one(folder: Path) -> Path:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out = OUT_DIR / out_name
     out.write_bytes(pack(title, (meta + ir).encode("utf-8")))
-    print(f"OK  {folder.name} -> {out.name} ({out.stat().st_size} bytes)")
+    print("OK  " + folder.name + " -> " + out.name + " (" + str(out.stat().st_size) + " bytes)")
     return out
 
 
 def build_all() -> None:
     folders = sorted(p for p in SRC_DIR.iterdir() if p.is_dir()) if SRC_DIR.is_dir() else []
     if not folders:
-        print("Keine Projekte"); sys.exit(1)
-    print(f"Baue {len(folders)} Projekt(e)...\n")
+        print("Keine Projekte")
+        sys.exit(1)
+    print("Baue " + str(len(folders)) + " Projekt(e)...\n")
     for f in folders:
         try:
             build_one(f)
         except Exception as e:
-            print(f"FEHLER {f.name}: {e}"); sys.exit(1)
+            print("FEHLER " + f.name + ": " + str(e))
+            sys.exit(1)
     print("\nFertig -> homebrew/out/")
 
 
@@ -165,4 +171,5 @@ if __name__ == "__main__":
     if len(sys.argv) >= 2 and sys.argv[1] == "--build":
         build_all()
     else:
-        print(__doc__); sys.exit(1)
+        print(__doc__)
+        sys.exit(1)
