@@ -1,6 +1,0 @@
-Willkommen bei DarkFox HomeBrew!
-
-Dieses Paket ist verschluesselt und laeuft
-auf der ESP32touch Station.
-
-Button HomeBrew antippen, dann OPEN.
