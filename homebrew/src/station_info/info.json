@@ -1,8 +1,0 @@
-{
-  "title": "Station Info",
-  "author": "DarkFox",
-  "version": "3.0",
-  "description": "Demo in C++-Datei, wird zu .hb",
-  "payload": "main.cpp",
-  "output": "station_info.hb"
-}
