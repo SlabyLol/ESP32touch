@@ -45,6 +45,14 @@ unsigned long lastClockUpdate = 0;
 const unsigned long CLOCK_UPDATE_MS = 1000;
 bool timeReady = false;
 
+// ---------- Doom Button ----------
+const int DOOM_BTN_X = 10;
+const int DOOM_BTN_Y = 210;
+const int DOOM_BTN_W = 100;
+const int DOOM_BTN_H = 35;
+unsigned long lastDoomTouch = 0;
+const unsigned long DOOM_DEBOUNCE_MS = 400;
+
 // ======================================================================
 //  Touch-Kalibrierung
 //  Falls die Tasten auf dem Screen nicht dort reagieren, wo man draufdrueckt:
@@ -241,6 +249,14 @@ void loadRotatingTexts() {
   }
 }
 
+// ---------- WAD-Check auf SD ----------
+bool checkWadOnSd() {
+  return SD.exists("/DOOM1.WAD") || SD.exists("/doom1.wad") ||
+         SD.exists("/DOOM.WAD")  || SD.exists("/doom.wad")  ||
+         SD.exists("/DOOM2.WAD") || SD.exists("/doom2.wad") ||
+         SD.exists("/PLUTONIA.WAD") || SD.exists("/TNT.WAD");
+}
+
 // ---------- Bildschirm-Layout (Hauptanzeige) ----------
 void showStatus(const char* text) {
   tft.setTextDatum(MC_DATUM);
@@ -248,6 +264,15 @@ void showStatus(const char* text) {
   tft.setFreeFont(&FreeSans9pt7b);
   tft.fillRect(0, 190, tft.width(), 30, TFT_BLACK);
   tft.drawString(text, tft.width() / 2, 205);
+}
+
+void drawDoomButton() {
+  tft.fillRect(DOOM_BTN_X, DOOM_BTN_Y, DOOM_BTN_W, DOOM_BTN_H, TFT_DARKGREY);
+  tft.drawRect(DOOM_BTN_X, DOOM_BTN_Y, DOOM_BTN_W, DOOM_BTN_H, TFT_RED);
+  tft.setTextDatum(MC_DATUM);
+  tft.setFreeFont(&FreeSans9pt7b);
+  tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+  tft.drawString("DOOM", DOOM_BTN_X + DOOM_BTN_W / 2, DOOM_BTN_Y + DOOM_BTN_H / 2);
 }
 
 void drawStaticLayout() {
@@ -261,6 +286,8 @@ void drawStaticLayout() {
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setFreeFont(&FreeSans12pt7b);
   tft.drawString("Raspberry Pi Station", tft.width() / 2, 80);
+
+  drawDoomButton();
 }
 
 void updateClock() {
@@ -284,6 +311,38 @@ void updateRotatingText() {
   tft.setFreeFont(&FreeSans12pt7b);
   tft.fillRect(0, 160, tft.width(), 40, TFT_BLACK);
   tft.drawString(rotatingTexts[currentTextIndex], tft.width() / 2, 180);
+}
+
+void handleDoomButton() {
+  bool hasWad = checkWadOnSd();
+
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+  tft.setFreeFont(&FreeSans12pt7b);
+
+  if (hasWad) {
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.drawString("WAD gefunden!", tft.width() / 2, 70);
+    tft.setFreeFont(&FreeSans9pt7b);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.drawString("Zum Spielen separate", tft.width() / 2, 120);
+    tft.drawString("Doom-Firmware flashen", tft.width() / 2, 145);
+    tft.drawString("(z.B. jkirsons/doom-espidf)", tft.width() / 2, 170);
+    tft.drawString("SD-Karte belassen", tft.width() / 2, 195);
+    Serial.println("Doom-Button: WAD auf SD gefunden");
+  } else {
+    tft.setTextColor(TFT_RED, TFT_BLACK);
+    tft.drawString("Keine WAD auf SD!", tft.width() / 2, 90);
+    tft.setFreeFont(&FreeSans9pt7b);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.drawString("DOOM1.WAD ins Root legen", tft.width() / 2, 140);
+    Serial.println("Doom-Button: keine WAD auf SD");
+  }
+
+  delay(3500);
+  drawStaticLayout();
+  updateRotatingText();
+  if (timeReady) updateClock();
 }
 
 void setup() {
@@ -323,7 +382,7 @@ void setup() {
     if (!loadWifiCredentials()) {
       showStatus("Fehler: info.txt fehlt!");
       updateRotatingText();
-      return; // ohne WLAN keine Uhrzeit, aber Texte laufen trotzdem
+      // trotzdem weiterlaufen lassen, Doom-Button funktioniert trotzdem
     }
   }
 
@@ -339,21 +398,22 @@ void setup() {
   if (WiFi.status() != WL_CONNECTED) {
     showStatus("WLAN fehlgeschlagen!");
     updateRotatingText();
-    return;
-  }
+    // trotzdem weiterlaufen lassen
+  } else {
+    showStatus("Hole Uhrzeit...");
 
-  showStatus("Hole Uhrzeit...");
+    // Mitteleuropa, automatischer Sommerzeit-Wechsel
+    configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org", "time.nist.gov");
 
-  // Mitteleuropa, automatischer Sommerzeit-Wechsel
-  configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org", "time.nist.gov");
-
-  struct tm timeinfo;
-  if (getLocalTime(&timeinfo, 10000)) {
-    timeReady = true;
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo, 10000)) {
+      timeReady = true;
+    }
   }
 
   tft.fillRect(0, 190, tft.width(), 30, TFT_BLACK);
   updateRotatingText();
+  drawDoomButton();
 }
 
 void loop() {
@@ -366,5 +426,15 @@ void loop() {
     lastTextSwitch = millis();
     currentTextIndex = (currentTextIndex + 1) % rotatingTextCount;
     updateRotatingText();
+  }
+
+  // Doom-Button Touch-Pruefung
+  uint16_t tx, ty;
+  if (millis() - lastDoomTouch > DOOM_DEBOUNCE_MS && tft.getTouch(&tx, &ty)) {
+    if (tx >= DOOM_BTN_X && tx <= DOOM_BTN_X + DOOM_BTN_W &&
+        ty >= DOOM_BTN_Y && ty <= DOOM_BTN_Y + DOOM_BTN_H) {
+      lastDoomTouch = millis();
+      handleDoomButton();
+    }
   }
 }
