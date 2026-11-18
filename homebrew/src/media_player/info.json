@@ -1,8 +1,0 @@
-{
-  "title": "Media Player",
-  "author": "DarkFox",
-  "version": "3.0",
-  "description": "Media-Hinweis als .cs -> .hb",
-  "payload": "main.cs",
-  "output": "media_player.hb"
-}
