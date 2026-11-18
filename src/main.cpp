@@ -16,14 +16,14 @@ TFT_eSPI tft = TFT_eSPI();
 #define SD_SCK  18
 SPIClass sdSPI(VSPI);
 
-// ---------- PIN, die am Serial Monitor ODER per Touch eingegeben werden muss ----------
-const char* CONSOLE_PIN = "1234"; // hier anpassen! Nur Ziffern.
+// ---------- PIN ----------
+const char* CONSOLE_PIN = "1234";
 
-// ---------- WLAN-Zugangsdaten (aus info.txt) ----------
+// ---------- WLAN ----------
 String wifiSSID;
 String wifiPASS;
 
-// ---------- Standardtexte, falls list.txt auf der SD-Karte fehlt ----------
+// ---------- Rotierende Texte ----------
 const char* defaultTexts[] = {
   "Willkommen!",
   "DarkFox Station",
@@ -33,7 +33,6 @@ const char* defaultTexts[] = {
 };
 const int defaultTextCount = sizeof(defaultTexts) / sizeof(defaultTexts[0]);
 
-// ---------- Rotierende Texte (aus list.txt oder defaultTexts befuellt) ----------
 #define MAX_TEXTS 30
 String rotatingTexts[MAX_TEXTS];
 int rotatingTextCount = 0;
@@ -45,31 +44,54 @@ unsigned long lastClockUpdate = 0;
 const unsigned long CLOCK_UPDATE_MS = 1000;
 bool timeReady = false;
 
-// ---------- Doom Button ----------
+// ---------- WAD Runner ----------
+#define MAX_WADS 50
+String wadList[MAX_WADS];
+int wadCount = 0;
+int wadScroll = 0;
+int wadSelected = 0;
+bool inWadMenu = false;
+
 const int DOOM_BTN_X = 10;
 const int DOOM_BTN_Y = 210;
 const int DOOM_BTN_W = 100;
 const int DOOM_BTN_H = 35;
-unsigned long lastDoomTouch = 0;
-const unsigned long DOOM_DEBOUNCE_MS = 400;
 
-// ======================================================================
-//  Touch-Kalibrierung
-//  Falls die Tasten auf dem Screen nicht dort reagieren, wo man draufdrueckt:
-//  Mit TFT_eSPI kommt ein Kalibrierungs-Beispiel-Sketch ("Touch_calibrate"
-//  unter examples/Generic), der eigene Werte fuer dein Display ausgibt.
-//  Die Werte hier einfach ersetzen.
-// ======================================================================
+const int WAD_LIST_TOP = 40;
+const int WAD_ROW_H = 28;
+const int WAD_VISIBLE = 5;
+
+const int BTN_BACK_X = 5;
+const int BTN_BACK_Y = 200;
+const int BTN_BACK_W = 70;
+const int BTN_BACK_H = 32;
+
+const int BTN_UP_X = 85;
+const int BTN_UP_Y = 200;
+const int BTN_UP_W = 50;
+const int BTN_UP_H = 32;
+
+const int BTN_DOWN_X = 145;
+const int BTN_DOWN_Y = 200;
+const int BTN_DOWN_W = 50;
+const int BTN_DOWN_H = 32;
+
+const int BTN_RUN_X = 205;
+const int BTN_RUN_Y = 200;
+const int BTN_RUN_W = 105;
+const int BTN_RUN_H = 32;
+
+unsigned long lastTouchTime = 0;
+const unsigned long TOUCH_DEBOUNCE_MS = 280;
+
+// ---------- Touch-Kalibrierung ----------
 uint16_t calData[5] = { 300, 3600, 300, 3600, 1 };
 
-// ---------- Numerisches Tastenfeld ----------
+// ---------- PIN-Keypad ----------
 struct KeyButton {
   int x, y, w, h;
   char label[4];
 };
-
-// 3 Spalten x 4 Reihen: 1-9, C(lear), 0, OK
-// Layout fuer Hochformat (240x320) - siehe drawPasswordScreen()
 KeyButton keys[12];
 const int KEY_W = 70;
 const int KEY_H = 45;
@@ -106,26 +128,23 @@ void drawPinDisplay(const String &input) {
   tft.setTextDatum(MC_DATUM);
   tft.setFreeFont(&FreeSansBold24pt7b);
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
-
   String masked = "";
   for (unsigned int i = 0; i < input.length(); i++) masked += "*";
   tft.drawString(masked, tft.width() / 2, 80);
 }
 
 void drawPasswordScreen() {
-  tft.setRotation(0); // Hochformat (240x320) - genug Platz fuer 4 Tastenreihen
+  tft.setRotation(0);
   tft.fillScreen(TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
   tft.setFreeFont(&FreeSans12pt7b);
   tft.setTextColor(TFT_ORANGE, TFT_BLACK);
   tft.drawString("PIN eingeben", tft.width() / 2, 25);
-
   buildKeypad();
   drawKeypad();
   drawPinDisplay("");
 }
 
-// gibt Buchstabe des gedrueckten Tasters zurueck, oder 0 wenn keiner getroffen wurde
 char getPressedKey(int tx, int ty) {
   for (int i = 0; i < 12; i++) {
     if (tx >= keys[i].x && tx <= keys[i].x + keys[i].w &&
@@ -136,29 +155,24 @@ char getPressedKey(int tx, int ty) {
   return 0;
 }
 
-// ---------- Passwortabfrage: Touch UND Serial parallel ----------
 bool waitForPin() {
   drawPasswordScreen();
-
   String input = "";
   unsigned long lastTouch = 0;
-  const unsigned long TOUCH_DEBOUNCE_MS = 250;
 
   while (true) {
-    // --- Serial pruefen ---
     if (Serial.available()) {
       char c = Serial.read();
       if (c == '\n') {
         if (input == CONSOLE_PIN) {
-          tft.setRotation(1); // zurueck ins Querformat fuer die Hauptanzeige
+          tft.setRotation(1);
           return true;
         }
-        Serial.println("Falsche PIN, nochmal versuchen.");
+        Serial.println("Falsche PIN");
         input = "";
         drawPinDisplay(input);
       } else if (c == '\r') {
-        // ignorieren
-      } else if (c == 8 || c == 127) { // Backspace
+      } else if (c == 8 || c == 127) {
         if (input.length() > 0) input.remove(input.length() - 1);
         drawPinDisplay(input);
       } else if (isDigit(c)) {
@@ -167,9 +181,8 @@ bool waitForPin() {
       }
     }
 
-    // --- Touch pruefen ---
     uint16_t tx, ty;
-    if (millis() - lastTouch > TOUCH_DEBOUNCE_MS && tft.getTouch(&tx, &ty)) {
+    if (millis() - lastTouch > 250 && tft.getTouch(&tx, &ty)) {
       lastTouch = millis();
       char key = getPressedKey(tx, ty);
       if (key == 'C') {
@@ -177,7 +190,7 @@ bool waitForPin() {
         drawPinDisplay(input);
       } else if (key == 'O') {
         if (input == CONSOLE_PIN) {
-          tft.setRotation(1); // zurueck ins Querformat fuer die Hauptanzeige
+          tft.setRotation(1);
           return true;
         }
         input = "";
@@ -190,14 +203,10 @@ bool waitForPin() {
   }
 }
 
-// ---------- SD: info.txt lesen (WLAN-Zugangsdaten) ----------
+// ---------- SD Helpers ----------
 bool loadWifiCredentials() {
   File f = SD.open("/info.txt");
-  if (!f) {
-    Serial.println("info.txt nicht gefunden");
-    return false;
-  }
-
+  if (!f) return false;
   while (f.available()) {
     String line = f.readStringUntil('\n');
     line.trim();
@@ -210,54 +219,78 @@ bool loadWifiCredentials() {
     }
   }
   f.close();
-
-  Serial.printf("SSID gelesen: '%s'\n", wifiSSID.c_str());
   return wifiSSID.length() > 0;
 }
 
-// ---------- SD: list.txt lesen (rotierende Nachrichten) ----------
 void loadRotatingTexts() {
   File f = SD.open("/list.txt");
   if (!f) {
-    Serial.println("list.txt nicht gefunden, benutze Standardtexte aus dem Code");
-    for (int i = 0; i < defaultTextCount; i++) {
-      rotatingTexts[i] = String(defaultTexts[i]);
-    }
+    for (int i = 0; i < defaultTextCount; i++) rotatingTexts[i] = String(defaultTexts[i]);
     rotatingTextCount = defaultTextCount;
     return;
   }
-
   rotatingTextCount = 0;
   while (f.available() && rotatingTextCount < MAX_TEXTS) {
     String line = f.readStringUntil('\n');
     line.trim();
     if (line.length() > 0) {
-      rotatingTexts[rotatingTextCount] = line;
-      rotatingTextCount++;
+      rotatingTexts[rotatingTextCount++] = line;
     }
   }
   f.close();
-
   if (rotatingTextCount == 0) {
-    Serial.println("list.txt war leer, benutze Standardtexte aus dem Code");
-    for (int i = 0; i < defaultTextCount; i++) {
-      rotatingTexts[i] = String(defaultTexts[i]);
-    }
+    for (int i = 0; i < defaultTextCount; i++) rotatingTexts[i] = String(defaultTexts[i]);
     rotatingTextCount = defaultTextCount;
-  } else {
-    Serial.printf("%d Nachrichten aus list.txt geladen\n", rotatingTextCount);
   }
 }
 
-// ---------- WAD-Check auf SD ----------
-bool checkWadOnSd() {
-  return SD.exists("/DOOM1.WAD") || SD.exists("/doom1.wad") ||
-         SD.exists("/DOOM.WAD")  || SD.exists("/doom.wad")  ||
-         SD.exists("/DOOM2.WAD") || SD.exists("/doom2.wad") ||
-         SD.exists("/PLUTONIA.WAD") || SD.exists("/TNT.WAD");
+bool isWadFile(const String &name) {
+  String lower = name;
+  lower.toLowerCase();
+  return lower.endsWith(".wad");
 }
 
-// ---------- Bildschirm-Layout (Hauptanzeige) ----------
+void scanWadsInDir(const char* path) {
+  File dir = SD.open(path);
+  if (!dir || !dir.isDirectory()) return;
+
+  File entry = dir.openNextFile();
+  while (entry && wadCount < MAX_WADS) {
+    if (!entry.isDirectory()) {
+      String name = entry.name();
+      // name kann voller Pfad sein
+      int slash = name.lastIndexOf('/');
+      if (slash >= 0) name = name.substring(slash + 1);
+
+      if (isWadFile(name)) {
+        String fullPath = String(path);
+        if (!fullPath.endsWith("/")) fullPath += "/";
+        if (fullPath == "//") fullPath = "/";
+        fullPath += name;
+        wadList[wadCount] = fullPath;
+        wadCount++;
+        Serial.printf("WAD gefunden: %s (%u bytes)\n", fullPath.c_str(), entry.size());
+      }
+    }
+    entry.close();
+    entry = dir.openNextFile();
+  }
+  dir.close();
+}
+
+void scanAllWads() {
+  wadCount = 0;
+  wadScroll = 0;
+  wadSelected = 0;
+  scanWadsInDir("/");
+  scanWadsInDir("/wads");
+  scanWadsInDir("/WADS");
+  scanWadsInDir("/doom");
+  scanWadsInDir("/DOOM");
+  Serial.printf("Gesamt %d WADs gefunden\n", wadCount);
+}
+
+// ---------- UI ----------
 void showStatus(const char* text) {
   tft.setTextDatum(MC_DATUM);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -272,10 +305,11 @@ void drawDoomButton() {
   tft.setTextDatum(MC_DATUM);
   tft.setFreeFont(&FreeSans9pt7b);
   tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-  tft.drawString("DOOM", DOOM_BTN_X + DOOM_BTN_W / 2, DOOM_BTN_Y + DOOM_BTN_H / 2);
+  tft.drawString("WADs", DOOM_BTN_X + DOOM_BTN_W / 2, DOOM_BTN_Y + DOOM_BTN_H / 2);
 }
 
 void drawStaticLayout() {
+  inWadMenu = false;
   tft.fillScreen(TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
 
@@ -293,10 +327,8 @@ void drawStaticLayout() {
 void updateClock() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo, 100)) return;
-
   char buf[9];
   strftime(buf, sizeof(buf), "%H:%M:%S", &timeinfo);
-
   tft.setTextDatum(MC_DATUM);
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
   tft.setFreeFont(&FreeSans12pt7b);
@@ -305,7 +337,7 @@ void updateClock() {
 }
 
 void updateRotatingText() {
-  if (rotatingTextCount == 0) return;
+  if (rotatingTextCount == 0 || inWadMenu) return;
   tft.setTextDatum(MC_DATUM);
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
   tft.setFreeFont(&FreeSans12pt7b);
@@ -313,54 +345,181 @@ void updateRotatingText() {
   tft.drawString(rotatingTexts[currentTextIndex], tft.width() / 2, 180);
 }
 
-void handleDoomButton() {
-  bool hasWad = checkWadOnSd();
+void drawWadButton(int x, int y, int w, int h, const char* label, uint16_t border) {
+  tft.fillRect(x, y, w, h, TFT_DARKGREY);
+  tft.drawRect(x, y, w, h, border);
+  tft.setTextDatum(MC_DATUM);
+  tft.setFreeFont(&FreeSans9pt7b);
+  tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+  tft.drawString(label, x + w / 2, y + h / 2);
+}
+
+void drawWadMenu() {
+  inWadMenu = true;
+  tft.fillScreen(TFT_BLACK);
+
+  tft.setTextDatum(TL_DATUM);
+  tft.setFreeFont(&FreeSans12pt7b);
+  tft.setTextColor(TFT_ORANGE, TFT_BLACK);
+  tft.drawString("WAD Runner", 10, 8);
+
+  tft.setFreeFont(&FreeSans9pt7b);
+  tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  char countBuf[24];
+  snprintf(countBuf, sizeof(countBuf), "%d gefunden", wadCount);
+  tft.drawString(countBuf, 200, 12);
+
+  if (wadCount == 0) {
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextColor(TFT_RED, TFT_BLACK);
+    tft.drawString("Keine WADs auf SD", tft.width() / 2, 100);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.drawString("Lege .wad Dateien ins Root", tft.width() / 2, 130);
+    tft.drawString("oder in /wads/", tft.width() / 2, 155);
+  } else {
+    for (int i = 0; i < WAD_VISIBLE; i++) {
+      int idx = wadScroll + i;
+      if (idx >= wadCount) break;
+
+      int y = WAD_LIST_TOP + i * WAD_ROW_H;
+      bool sel = (idx == wadSelected);
+
+      if (sel) {
+        tft.fillRect(5, y, tft.width() - 10, WAD_ROW_H - 2, TFT_NAVY);
+        tft.drawRect(5, y, tft.width() - 10, WAD_ROW_H - 2, TFT_YELLOW);
+      } else {
+        tft.fillRect(5, y, tft.width() - 10, WAD_ROW_H - 2, TFT_BLACK);
+        tft.drawRect(5, y, tft.width() - 10, WAD_ROW_H - 2, TFT_DARKGREY);
+      }
+
+      String name = wadList[idx];
+      int slash = name.lastIndexOf('/');
+      if (slash >= 0) name = name.substring(slash + 1);
+
+      tft.setTextDatum(ML_DATUM);
+      tft.setFreeFont(&FreeSans9pt7b);
+      tft.setTextColor(sel ? TFT_YELLOW : TFT_WHITE, sel ? TFT_NAVY : TFT_BLACK);
+      tft.drawString(name, 12, y + (WAD_ROW_H - 2) / 2);
+    }
+  }
+
+  drawWadButton(BTN_BACK_X, BTN_BACK_Y, BTN_BACK_W, BTN_BACK_H, "Back", TFT_WHITE);
+  drawWadButton(BTN_UP_X, BTN_UP_Y, BTN_UP_W, BTN_UP_H, "Up", TFT_CYAN);
+  drawWadButton(BTN_DOWN_X, BTN_DOWN_Y, BTN_DOWN_W, BTN_DOWN_H, "Dn", TFT_CYAN);
+  drawWadButton(BTN_RUN_X, BTN_RUN_Y, BTN_RUN_W, BTN_RUN_H, "START", TFT_GREEN);
+}
+
+void showWadRunScreen(int idx) {
+  String path = wadList[idx];
+  String name = path;
+  int slash = name.lastIndexOf('/');
+  if (slash >= 0) name = name.substring(slash + 1);
+
+  uint32_t size = 0;
+  File f = SD.open(path);
+  if (f) {
+    size = f.size();
+    f.close();
+  }
 
   tft.fillScreen(TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
   tft.setFreeFont(&FreeSans12pt7b);
+  tft.setTextColor(TFT_GREEN, TFT_BLACK);
+  tft.drawString("WAD ausgewaehlt", tft.width() / 2, 40);
 
-  if (hasWad) {
-    tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.drawString("WAD gefunden!", tft.width() / 2, 70);
-    tft.setFreeFont(&FreeSans9pt7b);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.drawString("Zum Spielen separate", tft.width() / 2, 120);
-    tft.drawString("Doom-Firmware flashen", tft.width() / 2, 145);
-    tft.drawString("(z.B. jkirsons/doom-espidf)", tft.width() / 2, 170);
-    tft.drawString("SD-Karte belassen", tft.width() / 2, 195);
-    Serial.println("Doom-Button: WAD auf SD gefunden");
+  tft.setFreeFont(&FreeSans9pt7b);
+  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+  tft.drawString(name, tft.width() / 2, 80);
+
+  char sizeBuf[32];
+  if (size >= 1024 * 1024) {
+    snprintf(sizeBuf, sizeof(sizeBuf), "%.1f MB", size / (1024.0f * 1024.0f));
   } else {
-    tft.setTextColor(TFT_RED, TFT_BLACK);
-    tft.drawString("Keine WAD auf SD!", tft.width() / 2, 90);
-    tft.setFreeFont(&FreeSans9pt7b);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.drawString("DOOM1.WAD ins Root legen", tft.width() / 2, 140);
-    Serial.println("Doom-Button: keine WAD auf SD");
+    snprintf(sizeBuf, sizeof(sizeBuf), "%u KB", (unsigned)(size / 1024));
+  }
+  tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  tft.drawString(sizeBuf, tft.width() / 2, 110);
+
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawString("Zum echten Spielen", tft.width() / 2, 150);
+  tft.drawString("Doom-Firmware flashen", tft.width() / 2, 175);
+  tft.drawString("WAD bleibt auf der SD", tft.width() / 2, 200);
+
+  Serial.printf("START WAD: %s (%u bytes)\n", path.c_str(), size);
+  delay(3500);
+  drawWadMenu();
+}
+
+void openWadMenu() {
+  scanAllWads();
+  drawWadMenu();
+}
+
+bool hit(int tx, int ty, int x, int y, int w, int h) {
+  return tx >= x && tx <= x + w && ty >= y && ty <= y + h;
+}
+
+void handleWadMenuTouch(int tx, int ty) {
+  if (hit(tx, ty, BTN_BACK_X, BTN_BACK_Y, BTN_BACK_W, BTN_BACK_H)) {
+    drawStaticLayout();
+    updateRotatingText();
+    if (timeReady) updateClock();
+    return;
   }
 
-  delay(3500);
-  drawStaticLayout();
-  updateRotatingText();
-  if (timeReady) updateClock();
+  if (wadCount == 0) return;
+
+  if (hit(tx, ty, BTN_UP_X, BTN_UP_Y, BTN_UP_W, BTN_UP_H)) {
+    if (wadSelected > 0) {
+      wadSelected--;
+      if (wadSelected < wadScroll) wadScroll = wadSelected;
+      drawWadMenu();
+    }
+    return;
+  }
+
+  if (hit(tx, ty, BTN_DOWN_X, BTN_DOWN_Y, BTN_DOWN_W, BTN_DOWN_H)) {
+    if (wadSelected < wadCount - 1) {
+      wadSelected++;
+      if (wadSelected >= wadScroll + WAD_VISIBLE) {
+        wadScroll = wadSelected - WAD_VISIBLE + 1;
+      }
+      drawWadMenu();
+    }
+    return;
+  }
+
+  if (hit(tx, ty, BTN_RUN_X, BTN_RUN_Y, BTN_RUN_W, BTN_RUN_H)) {
+    showWadRunScreen(wadSelected);
+    return;
+  }
+
+  // Direkt auf Listeneintrag tippen
+  for (int i = 0; i < WAD_VISIBLE; i++) {
+    int idx = wadScroll + i;
+    if (idx >= wadCount) break;
+    int y = WAD_LIST_TOP + i * WAD_ROW_H;
+    if (hit(tx, ty, 5, y, tft.width() - 10, WAD_ROW_H - 2)) {
+      wadSelected = idx;
+      drawWadMenu();
+      return;
+    }
+  }
 }
 
 void setup() {
   Serial.begin(115200);
-  delay(1000); // Zeit fuer den Serial Monitor zum Verbinden
+  delay(1000);
 
-  // Backlight
   pinMode(TFT_BL_PIN, OUTPUT);
   digitalWrite(TFT_BL_PIN, HIGH);
 
-  // Display
   tft.init();
   tft.setRotation(1);
   tft.setTouch(calData);
 
-  // PIN-Abfrage - blockiert, bis richtige PIN eingegeben wurde (Touch oder Serial)
   Serial.println("=== DarkFox Konsole ===");
-  Serial.println("PIN am Screen eintippen ODER hier im Serial Monitor + Enter.");
   waitForPin();
 
   drawStaticLayout();
@@ -370,45 +529,33 @@ void setup() {
   bool sdOk = SD.begin(SD_CS, sdSPI);
 
   if (!sdOk) {
-    Serial.println("SD-Karte konnte nicht initialisiert werden");
+    Serial.println("SD-Fehler");
     showStatus("SD-Fehler, Standardtexte");
-    for (int i = 0; i < defaultTextCount; i++) {
-      rotatingTexts[i] = String(defaultTexts[i]);
-    }
+    for (int i = 0; i < defaultTextCount; i++) rotatingTexts[i] = String(defaultTexts[i]);
     rotatingTextCount = defaultTextCount;
   } else {
     loadRotatingTexts();
-
-    if (!loadWifiCredentials()) {
-      showStatus("Fehler: info.txt fehlt!");
-      updateRotatingText();
-      // trotzdem weiterlaufen lassen, Doom-Button funktioniert trotzdem
-    }
+    scanAllWads();
+    loadWifiCredentials();
   }
 
   showStatus("Verbinde WLAN...");
   WiFi.mode(WIFI_STA);
-  WiFi.begin(wifiSSID.c_str(), wifiPASS.c_str());
-
-  unsigned long startAttempt = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 15000) {
-    delay(300);
+  if (wifiSSID.length() > 0) {
+    WiFi.begin(wifiSSID.c_str(), wifiPASS.c_str());
+    unsigned long startAttempt = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 15000) {
+      delay(300);
+    }
   }
 
-  if (WiFi.status() != WL_CONNECTED) {
-    showStatus("WLAN fehlgeschlagen!");
-    updateRotatingText();
-    // trotzdem weiterlaufen lassen
-  } else {
+  if (WiFi.status() == WL_CONNECTED) {
     showStatus("Hole Uhrzeit...");
-
-    // Mitteleuropa, automatischer Sommerzeit-Wechsel
     configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org", "time.nist.gov");
-
     struct tm timeinfo;
-    if (getLocalTime(&timeinfo, 10000)) {
-      timeReady = true;
-    }
+    if (getLocalTime(&timeinfo, 10000)) timeReady = true;
+  } else {
+    showStatus("WLAN offline");
   }
 
   tft.fillRect(0, 190, tft.width(), 30, TFT_BLACK);
@@ -417,24 +564,26 @@ void setup() {
 }
 
 void loop() {
-  if (timeReady && millis() - lastClockUpdate > CLOCK_UPDATE_MS) {
-    lastClockUpdate = millis();
-    updateClock();
+  if (!inWadMenu) {
+    if (timeReady && millis() - lastClockUpdate > CLOCK_UPDATE_MS) {
+      lastClockUpdate = millis();
+      updateClock();
+    }
+    if (rotatingTextCount > 0 && millis() - lastTextSwitch > TEXT_SWITCH_MS) {
+      lastTextSwitch = millis();
+      currentTextIndex = (currentTextIndex + 1) % rotatingTextCount;
+      updateRotatingText();
+    }
   }
 
-  if (rotatingTextCount > 0 && millis() - lastTextSwitch > TEXT_SWITCH_MS) {
-    lastTextSwitch = millis();
-    currentTextIndex = (currentTextIndex + 1) % rotatingTextCount;
-    updateRotatingText();
-  }
-
-  // Doom-Button Touch-Pruefung
   uint16_t tx, ty;
-  if (millis() - lastDoomTouch > DOOM_DEBOUNCE_MS && tft.getTouch(&tx, &ty)) {
-    if (tx >= DOOM_BTN_X && tx <= DOOM_BTN_X + DOOM_BTN_W &&
-        ty >= DOOM_BTN_Y && ty <= DOOM_BTN_Y + DOOM_BTN_H) {
-      lastDoomTouch = millis();
-      handleDoomButton();
+  if (millis() - lastTouchTime > TOUCH_DEBOUNCE_MS && tft.getTouch(&tx, &ty)) {
+    lastTouchTime = millis();
+
+    if (inWadMenu) {
+      handleWadMenuTouch(tx, ty);
+    } else if (hit(tx, ty, DOOM_BTN_X, DOOM_BTN_Y, DOOM_BTN_W, DOOM_BTN_H)) {
+      openWadMenu();
     }
   }
 }
