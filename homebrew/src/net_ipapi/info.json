@@ -1,0 +1,8 @@
+{
+  "title": "Meine IP (API)",
+  "author": "DarkFox",
+  "version": "1.0",
+  "description": "HTTP GET auf api.ipify.org",
+  "payload": "main.cpp",
+  "output": "net_ipapi.hb"
+}

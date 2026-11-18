@@ -1,0 +1,8 @@
+{
+  "title": "WLAN Status",
+  "author": "DarkFox",
+  "version": "1.0",
+  "description": "Zeigt SSID, IP und RSSI vom echten WLAN",
+  "payload": "main.py",
+  "output": "net_wifi.hb"
+}

@@ -1,3 +1,6 @@
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+
 uint16_t hbParseColor(String s) {
   s.trim();
   s.toUpperCase();
@@ -60,6 +63,66 @@ bool loadHbPayload(const String& path, String& outScript) {
   return true;
 }
 
+void hbShowWifiStatus(uint16_t color) {
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextColor(color, TFT_BLACK);
+  tft.setFreeFont(&FreeSans9pt7b);
+  if (WiFi.status() != WL_CONNECTED) {
+    tft.drawString("WLAN: offline", 10, 50);
+    return;
+  }
+  tft.drawString("WLAN: online", 10, 50);
+  tft.drawString(WiFi.SSID(), 10, 80);
+  tft.drawString(WiFi.localIP().toString(), 10, 110);
+  char rssiBuf[24];
+  snprintf(rssiBuf, sizeof(rssiBuf), "RSSI: %d dBm", WiFi.RSSI());
+  tft.drawString(rssiBuf, 10, 140);
+}
+
+void hbHttpGet(const String& url, uint16_t color) {
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextColor(color, TFT_BLACK);
+  tft.setFreeFont(&FreeSans9pt7b);
+
+  if (WiFi.status() != WL_CONNECTED) {
+    tft.drawString("Kein WLAN", 10, 50);
+    return;
+  }
+
+  tft.drawString("HTTP GET...", 10, 50);
+
+  HTTPClient http;
+  http.setTimeout(8000);
+  bool ok = false;
+  if (url.startsWith("https://")) {
+    WiFiClientSecure client;
+    client.setInsecure();
+    ok = http.begin(client, url);
+  } else {
+    ok = http.begin(url);
+  }
+  if (!ok) {
+    tft.drawString("URL Fehler", 10, 80);
+    return;
+  }
+
+  int code = http.GET();
+  char codeBuf[32];
+  snprintf(codeBuf, sizeof(codeBuf), "Status: %d", code);
+  tft.drawString(codeBuf, 10, 80);
+
+  if (code > 0) {
+    String body = http.getString();
+    body.replace('\r', ' ');
+    body.replace('\n', ' ');
+    if (body.length() > 120) body = body.substring(0, 120) + "...";
+    tft.drawString(body, 10, 120);
+  } else {
+    tft.drawString("Request failed", 10, 120);
+  }
+  http.end();
+}
+
 void runHomeBrewScript(const String& raw) {
   String script = raw;
   int sep = script.indexOf("\n---\n");
@@ -79,7 +142,7 @@ void runHomeBrewScript(const String& raw) {
     start = end + 1;
     line.replace("\r", "");
     line.trim();
-    if (line.length() == 0 || line.startsWith("#")) continue;
+    if (line.length() == 0 || line.startsWith("#") || line.startsWith("//")) continue;
 
     if (line.equalsIgnoreCase("CLEAR")) {
       tft.fillScreen(TFT_BLACK);
@@ -92,12 +155,22 @@ void runHomeBrewScript(const String& raw) {
     if (line.startsWith("WAIT ") || line.startsWith("wait ")) {
       int ms = line.substring(5).toInt();
       if (ms < 0) ms = 0;
-      if (ms > 10000) ms = 10000;
+      if (ms > 15000) ms = 15000;
       delay(ms);
       continue;
     }
     if (line.startsWith("COLOR ") || line.startsWith("color ")) {
       color = hbParseColor(line.substring(6));
+      continue;
+    }
+    if (line.equalsIgnoreCase("WIFI") || line.equalsIgnoreCase("WIFI_STATUS")) {
+      hbShowWifiStatus(color);
+      continue;
+    }
+    if (line.startsWith("HTTP ") || line.startsWith("http ")) {
+      String url = line.substring(5);
+      url.trim();
+      hbHttpGet(url, color);
       continue;
     }
     if (line.startsWith("CENTER ") || line.startsWith("center ")) {

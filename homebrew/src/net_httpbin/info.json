@@ -1,0 +1,8 @@
+{
+  "title": "HTTP Echo",
+  "author": "DarkFox",
+  "version": "1.0",
+  "description": "HTTP GET httpbin.org/get",
+  "payload": "main.cs",
+  "output": "net_httpbin.hb"
+}

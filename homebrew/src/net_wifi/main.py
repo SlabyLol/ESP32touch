@@ -1,0 +1,9 @@
+# Internet-Beispiel 1: WLAN Status
+CLEAR
+COLOR CYAN
+CENTER 25 WLAN Status
+COLOR WHITE
+WIFI
+COLOR GREEN
+CENTER 190 Touch = Zurueck
+WAIT_TOUCH

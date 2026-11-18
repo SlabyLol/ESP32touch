@@ -1,45 +1,26 @@
 # HomeBrew
 
-## Regel
+1. Quelle nur **`.py` / `.cpp` / `.cs`**
+2. `python tools/pack_homebrew.py --build` → **`.hb`**
+3. `.hb` auf SD nach `/homebrew/`
 
-1. Programmieren nur in **`.py`**, **`.cpp`** oder **`.cs`**
-2. Builder macht daraus **`.hb`**
-3. Nur **`.hb`** auf die SD / ins Release
+## Internet-Befehle
 
-```bash
-python tools/pack_homebrew.py --build
-```
+| Befehl | Wirkung |
+|--------|--------|
+| `WIFI` | SSID, lokale IP, RSSI |
+| `HTTP https://...` | HTTPS GET, Status + Antworttext |
 
-Andere Endungen (`.txt`, `.hbs`, …) werden abgelehnt.
+Braucht WLAN (`info.txt` auf der SD).
 
-## Projekt
+## Drei Beispiele
 
-```
-homebrew/src/mein_ding/
-  info.json
-  main.py      # oder main.cpp oder main.cs
-```
+| .hb | Quelle | Was es macht |
+|-----|--------|----------------|
+| `net_wifi.hb` | `main.py` | WLAN-Status live |
+| `net_ipapi.hb` | `main.cpp` | Public IP von api.ipify.org |
+| `net_httpbin.hb` | `main.cs` | GET httpbin.org/get |
 
-`info.json`:
-```json
-{
-  "title": "Mein Ding",
-  "author": "Du",
-  "version": "1.0",
-  "description": "...",
-  "payload": "main.py",
-  "output": "mein_ding.hb"
-}
-```
+## Weitere Befehle
 
-## Befehle im Quellcode
-
-In der `.py` / `.cpp` / `.cs` stehen die HomeBrew-Anzeige-Befehle:
-
-`CLEAR` `COLOR` `TEXT` `CENTER` `WAIT` `WAIT_TOUCH`
-
-(Das ist kein voller Python-/C++-/C#-Compiler auf dem ESP32 – die Datei wird verschluesselt nach `.hb` gepackt und die Befehle werden dort ausgefuehrt.)
-
-## CI
-
-GitHub Actions baut alle Projekte zu `.hb` und legt sie ins Release.
+`CLEAR` `COLOR` `TEXT x y` `CENTER y` `WAIT ms` `WAIT_TOUCH`
