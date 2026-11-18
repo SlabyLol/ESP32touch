@@ -1,11 +1,15 @@
-// Internet-Beispiel 2: oeffentliche IP per API
-CLEAR
-COLOR ORANGE
-CENTER 25 Public IP
-COLOR YELLOW
-CENTER 55 api.ipify.org
-COLOR WHITE
-HTTP https://api.ipify.org
-COLOR GREEN
-CENTER 190 Touch = Zurueck
-WAIT_TOUCH
+// Public IP – echtes C++-API-Style, wird zu .hb transpiliert.
+#include <HomeBrew.h>
+
+void main() {
+  clear();
+  color("ORANGE");
+  center(25, "Public IP");
+  color("YELLOW");
+  center(55, "api.ipify.org");
+  color("WHITE");
+  http("https://api.ipify.org");
+  color("GREEN");
+  center(190, "Touch = Zurueck");
+  wait_touch();
+}

@@ -1,26 +1,58 @@
 # HomeBrew
 
-1. Quelle nur **`.py` / `.cpp` / `.cs`**
-2. `python tools/pack_homebrew.py --build` → **`.hb`**
-3. `.hb` auf SD nach `/homebrew/`
+Quellen sind **echtes** Python / C++ / C# mit API-Aufrufen.
+Der Packer übersetzt sie nach `.hb` für den ESP32.
 
-## Internet-Befehle
+```python
+def main():
+    clear()
+    color("CYAN")
+    center(25, "Hallo")
+    wifi()
+    http("https://api.ipify.org")
+    wait_touch()
+```
 
-| Befehl | Wirkung |
+```cpp
+void main() {
+  clear();
+  color("ORANGE");
+  http("https://api.ipify.org");
+  wait_touch();
+}
+```
+
+```csharp
+HomeBrew.clear();
+HomeBrew.http("https://httpbin.org/get");
+HomeBrew.wait_touch();
+```
+
+## API
+
+| Aufruf | Wirkung |
 |--------|--------|
-| `WIFI` | SSID, lokale IP, RSSI |
-| `HTTP https://...` | HTTPS GET, Status + Antworttext |
+| `clear()` | Screen löschen |
+| `color("CYAN")` | Farbe |
+| `text(x, y, "msg")` | Text |
+| `center(y, "msg")` | Zentriert |
+| `wait(ms)` | Pause |
+| `wait_touch()` | Warten auf Touch |
+| `wifi()` | WLAN-Status |
+| `http("https://...")` | HTTPS GET |
 
-Braucht WLAN (`info.txt` auf der SD).
+## Bauen
 
-## Drei Beispiele
+```bash
+python tools/pack_homebrew.py --build
+```
 
-| .hb | Quelle | Was es macht |
-|-----|--------|----------------|
-| `net_wifi.hb` | `main.py` | WLAN-Status live |
-| `net_ipapi.hb` | `main.cpp` | Public IP von api.ipify.org |
-| `net_httpbin.hb` | `main.cs` | GET httpbin.org/get |
+Nur `.py` / `.cpp` / `.cs` → `homebrew/out/*.hb`
 
-## Weitere Befehle
+## Beispiele
 
-`CLEAR` `COLOR` `TEXT x y` `CENTER y` `WAIT ms` `WAIT_TOUCH`
+| Datei | .hb |
+|-------|-----|
+| `net_wifi/main.py` | WLAN Status |
+| `net_ipapi/main.cpp` | Public IP |
+| `net_httpbin/main.cs` | HTTP Echo |
