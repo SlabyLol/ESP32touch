@@ -1,58 +1,34 @@
-# HomeBrew
-
-Quellen sind **echtes** Python / C++ / C# mit API-Aufrufen.
-Der Packer übersetzt sie nach `.hb` für den ESP32.
+# HomeBrew – echte GUI
 
 ```python
-def main():
-    clear()
-    color("CYAN")
-    center(25, "Hallo")
-    wifi()
-    http("https://api.ipify.org")
-    wait_touch()
+clear()
+bg("BLACK")
+color("CYAN")
+box(8, 8, 304, 50)
+center(30, "Titel")
+label(20, 70, "Text")
+button(1, 20, 180, 120, 40, "OK")
+button(2, 180, 180, 120, 40, "Back")
+show()  # wartet auf Touch auf einen Button
 ```
 
-```cpp
-void main() {
-  clear();
-  color("ORANGE");
-  http("https://api.ipify.org");
-  wait_touch();
-}
-```
+## GUI-API
 
-```csharp
-HomeBrew.clear();
-HomeBrew.http("https://httpbin.org/get");
-HomeBrew.wait_touch();
-```
-
-## API
-
-| Aufruf | Wirkung |
-|--------|--------|
-| `clear()` | Screen löschen |
-| `color("CYAN")` | Farbe |
-| `text(x, y, "msg")` | Text |
-| `center(y, "msg")` | Zentriert |
-| `wait(ms)` | Pause |
-| `wait_touch()` | Warten auf Touch |
+| Aufruf | Bedeutung |
+|--------|-----------|
+| `clear()` | Screen + GUI reset |
+| `bg("BLACK")` | Hintergrund |
+| `color("CYAN")` | Vordergrundfarbe |
+| `box(x,y,w,h)` | Rahmen |
+| `fillbox(x,y,w,h)` | Gefülltes Rechteck |
+| `label(x,y,"text")` | Text |
+| `center(y,"text")` | Zentrierter Text |
+| `button(id,x,y,w,h,"text")` | Touch-Button |
+| `show()` | Event-Loop bis Button-Touch |
 | `wifi()` | WLAN-Status |
 | `http("https://...")` | HTTPS GET |
-
-## Bauen
+| `wait(ms)` / `wait_touch()` | Warten |
 
 ```bash
 python tools/pack_homebrew.py --build
 ```
-
-Nur `.py` / `.cpp` / `.cs` → `homebrew/out/*.hb`
-
-## Beispiele
-
-| Datei | .hb |
-|-------|-----|
-| `net_wifi/main.py` | WLAN Status |
-| `net_ipapi/main.cpp` | Public IP |
-| `net_httpbin/main.cs` | HTTP Echo |

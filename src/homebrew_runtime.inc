@@ -1,6 +1,20 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 
+#define HB_MAX_BTNS 8
+
+struct HbBtn {
+  int id;
+  int x, y, w, h;
+  char label[24];
+  bool used;
+};
+
+HbBtn hbBtns[HB_MAX_BTNS];
+int hbBtnCount = 0;
+uint16_t hbFg = TFT_WHITE;
+uint16_t hbBg = TFT_BLACK;
+
 uint16_t hbParseColor(String s) {
   s.trim();
   s.toUpperCase();
@@ -14,27 +28,92 @@ uint16_t hbParseColor(String s) {
   if (s == "ORANGE") return TFT_ORANGE;
   if (s == "MAGENTA") return TFT_MAGENTA;
   if (s == "NAVY") return TFT_NAVY;
+  if (s == "DARKGREY" || s == "GRAY" || s == "GREY") return TFT_DARKGREY;
   if (s.length() == 6) {
     char *end;
     long v = strtol(s.c_str(), &end, 16);
     if (*end == 0) {
-      uint8_t r = (v >> 16) & 0xFF;
-      uint8_t g = (v >> 8) & 0xFF;
-      uint8_t b = v & 0xFF;
-      return tft.color565(r, g, b);
+      return tft.color565((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF);
     }
   }
   return TFT_WHITE;
+}
+
+void hbResetGui() {
+  hbBtnCount = 0;
+  for (int i = 0; i < HB_MAX_BTNS; i++) hbBtns[i].used = false;
+  hbFg = TFT_WHITE;
+  hbBg = TFT_BLACK;
+}
+
+void hbDrawButton(const HbBtn& b) {
+  tft.fillRoundRect(b.x, b.y, b.w, b.h, 4, TFT_DARKGREY);
+  tft.drawRoundRect(b.x, b.y, b.w, b.h, 4, hbFg);
+  tft.setTextDatum(MC_DATUM);
+  tft.setFreeFont(&FreeSans9pt7b);
+  tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+  tft.drawString(b.label, b.x + b.w / 2, b.y + b.h / 2);
+}
+
+void hbAddButton(int id, int x, int y, int w, int h, const String& label) {
+  if (hbBtnCount >= HB_MAX_BTNS) return;
+  HbBtn& b = hbBtns[hbBtnCount++];
+  b.used = true;
+  b.id = id;
+  b.x = x; b.y = y; b.w = w; b.h = h;
+  strncpy(b.label, label.c_str(), sizeof(b.label) - 1);
+  b.label[sizeof(b.label) - 1] = 0;
+  hbDrawButton(b);
+}
+
+void hbLabel(int x, int y, const String& msg) {
+  tft.setTextDatum(TL_DATUM);
+  tft.setFreeFont(&FreeSans9pt7b);
+  tft.setTextColor(hbFg, hbBg);
+  tft.drawString(msg, x, y);
+}
+
+void hbBox(int x, int y, int w, int h) {
+  tft.drawRoundRect(x, y, w, h, 4, hbFg);
+}
+
+void hbFillBox(int x, int y, int w, int h) {
+  tft.fillRoundRect(x, y, w, h, 4, hbFg);
+}
+
+int hbGuiLoop(uint32_t timeoutMs) {
+  uint32_t start = millis();
+  delay(150);
+  while (true) {
+    if (timeoutMs > 0 && millis() - start > timeoutMs) return -1;
+    uint16_t tx, ty;
+    if (tft.getTouch(&tx, &ty)) {
+      for (int i = 0; i < hbBtnCount; i++) {
+        if (!hbBtns[i].used) continue;
+        HbBtn& b = hbBtns[i];
+        if (tx >= b.x && tx <= b.x + b.w && ty >= b.y && ty <= b.y + b.h) {
+          // press feedback
+          tft.fillRoundRect(b.x, b.y, b.w, b.h, 4, TFT_NAVY);
+          tft.drawRoundRect(b.x, b.y, b.w, b.h, 4, TFT_YELLOW);
+          tft.setTextDatum(MC_DATUM);
+          tft.setTextColor(TFT_YELLOW, TFT_NAVY);
+          tft.setFreeFont(&FreeSans9pt7b);
+          tft.drawString(b.label, b.x + b.w / 2, b.y + b.h / 2);
+          delay(200);
+          return b.id;
+        }
+      }
+      delay(50);
+    }
+    delay(10);
+  }
 }
 
 void hbWaitTouch() {
   delay(200);
   uint16_t tx, ty;
   while (true) {
-    if (tft.getTouch(&tx, &ty)) {
-      delay(200);
-      return;
-    }
+    if (tft.getTouch(&tx, &ty)) { delay(200); return; }
     delay(20);
   }
 }
@@ -83,34 +162,26 @@ void hbHttpGet(const String& url, uint16_t color) {
   tft.setTextDatum(TL_DATUM);
   tft.setTextColor(color, TFT_BLACK);
   tft.setFreeFont(&FreeSans9pt7b);
-
   if (WiFi.status() != WL_CONNECTED) {
     tft.drawString("Kein WLAN", 10, 50);
     return;
   }
-
   tft.drawString("HTTP GET...", 10, 50);
-
   HTTPClient http;
   http.setTimeout(8000);
   bool ok = false;
+  WiFiClientSecure client;
   if (url.startsWith("https://")) {
-    WiFiClientSecure client;
     client.setInsecure();
     ok = http.begin(client, url);
   } else {
     ok = http.begin(url);
   }
-  if (!ok) {
-    tft.drawString("URL Fehler", 10, 80);
-    return;
-  }
-
+  if (!ok) { tft.drawString("URL Fehler", 10, 80); return; }
   int code = http.GET();
   char codeBuf[32];
   snprintf(codeBuf, sizeof(codeBuf), "Status: %d", code);
   tft.drawString(codeBuf, 10, 80);
-
   if (code > 0) {
     String body = http.getString();
     body.replace('\r', ' ');
@@ -130,7 +201,9 @@ void runHomeBrewScript(const String& raw) {
   if (sep >= 0) script = script.substring(sep + 5);
   while (script.startsWith("\n") || script.startsWith("\r")) script = script.substring(1);
 
-  uint16_t color = TFT_WHITE;
+  hbResetGui();
+  hbFg = TFT_WHITE;
+  hbBg = TFT_BLACK;
   tft.fillScreen(TFT_BLACK);
   tft.setFreeFont(&FreeSans9pt7b);
 
@@ -145,11 +218,16 @@ void runHomeBrewScript(const String& raw) {
     if (line.length() == 0 || line.startsWith("#") || line.startsWith("//")) continue;
 
     if (line.equalsIgnoreCase("CLEAR")) {
-      tft.fillScreen(TFT_BLACK);
+      hbResetGui();
+      tft.fillScreen(hbBg);
       continue;
     }
     if (line.equalsIgnoreCase("WAIT_TOUCH") || line.equalsIgnoreCase("BTN")) {
       hbWaitTouch();
+      continue;
+    }
+    if (line.equalsIgnoreCase("GUI_RUN") || line.equalsIgnoreCase("SHOW")) {
+      hbGuiLoop(0);
       continue;
     }
     if (line.startsWith("WAIT ") || line.startsWith("wait ")) {
@@ -160,17 +238,72 @@ void runHomeBrewScript(const String& raw) {
       continue;
     }
     if (line.startsWith("COLOR ") || line.startsWith("color ")) {
-      color = hbParseColor(line.substring(6));
+      hbFg = hbParseColor(line.substring(6));
+      continue;
+    }
+    if (line.startsWith("BG ") || line.startsWith("bg ")) {
+      hbBg = hbParseColor(line.substring(3));
+      tft.fillScreen(hbBg);
       continue;
     }
     if (line.equalsIgnoreCase("WIFI") || line.equalsIgnoreCase("WIFI_STATUS")) {
-      hbShowWifiStatus(color);
+      hbShowWifiStatus(hbFg);
       continue;
     }
     if (line.startsWith("HTTP ") || line.startsWith("http ")) {
       String url = line.substring(5);
       url.trim();
-      hbHttpGet(url, color);
+      hbHttpGet(url, hbFg);
+      continue;
+    }
+    // LABEL x y text...
+    if (line.startsWith("LABEL ") || line.startsWith("label ")) {
+      String rest = line.substring(6);
+      rest.trim();
+      int sp1 = rest.indexOf(' ');
+      if (sp1 > 0) {
+        int x = rest.substring(0, sp1).toInt();
+        String rest2 = rest.substring(sp1 + 1);
+        int sp2 = rest2.indexOf(' ');
+        if (sp2 > 0) {
+          int y = rest2.substring(0, sp2).toInt();
+          String msg = rest2.substring(sp2 + 1);
+          hbLabel(x, y, msg);
+        }
+      }
+      continue;
+    }
+    // BUTTON id x y w h text...
+    if (line.startsWith("BUTTON ") || line.startsWith("button ")) {
+      String rest = line.substring(7);
+      rest.trim();
+      int p[5];
+      int idx = 0;
+      while (idx < 5) {
+        int sp = rest.indexOf(' ');
+        if (sp < 0) break;
+        p[idx++] = rest.substring(0, sp).toInt();
+        rest = rest.substring(sp + 1);
+        rest.trim();
+      }
+      if (idx == 5) {
+        hbAddButton(p[0], p[1], p[2], p[3], p[4], rest);
+      }
+      continue;
+    }
+    // BOX x y w h
+    if (line.startsWith("BOX ") || line.startsWith("box ")) {
+      int x, y, w, h;
+      if (sscanf(line.c_str() + 4, "%d %d %d %d", &x, &y, &w, &h) == 4) {
+        hbBox(x, y, w, h);
+      }
+      continue;
+    }
+    if (line.startsWith("FILLBOX ") || line.startsWith("fillbox ")) {
+      int x, y, w, h;
+      if (sscanf(line.c_str() + 8, "%d %d %d %d", &x, &y, &w, &h) == 4) {
+        hbFillBox(x, y, w, h);
+      }
       continue;
     }
     if (line.startsWith("CENTER ") || line.startsWith("center ")) {
@@ -181,7 +314,8 @@ void runHomeBrewScript(const String& raw) {
         int y = rest.substring(0, sp).toInt();
         String msg = rest.substring(sp + 1);
         tft.setTextDatum(MC_DATUM);
-        tft.setTextColor(color, TFT_BLACK);
+        tft.setTextColor(hbFg, hbBg);
+        tft.setFreeFont(&FreeSans9pt7b);
         tft.drawString(msg, tft.width() / 2, y);
       }
       continue;
@@ -197,15 +331,13 @@ void runHomeBrewScript(const String& raw) {
         if (sp2 > 0) {
           int y = rest2.substring(0, sp2).toInt();
           String msg = rest2.substring(sp2 + 1);
-          tft.setTextDatum(TL_DATUM);
-          tft.setTextColor(color, TFT_BLACK);
-          tft.drawString(msg, x, y);
+          hbLabel(x, y, msg);
         }
       }
       continue;
     }
     tft.setTextDatum(MC_DATUM);
-    tft.setTextColor(color, TFT_BLACK);
+    tft.setTextColor(hbFg, hbBg);
     tft.drawString(line, tft.width() / 2, 120);
   }
 }

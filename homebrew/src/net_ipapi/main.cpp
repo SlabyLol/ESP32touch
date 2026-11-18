@@ -1,15 +1,20 @@
-// Public IP – echtes C++-API-Style, wird zu .hb transpiliert.
+// Public IP – GUI
 #include <HomeBrew.h>
 
 void main() {
   clear();
+  bg("BLACK");
   color("ORANGE");
-  center(25, "Public IP");
+  box(8, 8, 304, 45);
+  center(28, "Public IP");
+
   color("YELLOW");
-  center(55, "api.ipify.org");
+  label(20, 60, "api.ipify.org");
+
   color("WHITE");
   http("https://api.ipify.org");
+
   color("GREEN");
-  center(190, "Touch = Zurueck");
-  wait_touch();
+  button(1, 100, 185, 120, 40, "OK");
+  show();
 }
