@@ -43,7 +43,7 @@ def pack(title: str, payload: bytes, flags: int = 0) -> bytes:
 def transpile(source: str, ext: str) -> str:
     text = source
     text = re.sub(r"using\s+[^;]+;", "", text)
-    text = re.sub(r"#include\s*[<"][^>"]+[>"]", "", text)
+    text = re.sub(r"#include\s+[<\"].+[>\"]", "", text)
     text = re.sub(r"namespace\s+\w+\s*\{", "", text)
     text = re.sub(r"public\s+class\s+\w+\s*\{", "", text)
     text = re.sub(r"static\s+void\s+Main\s*\([^)]*\)\s*\{", "", text)
