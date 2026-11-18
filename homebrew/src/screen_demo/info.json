@@ -1,8 +1,8 @@
 {
   "title": "Screen Demo",
   "author": "DarkFox",
-  "version": "1.0",
-  "description": "Farben, Text, Timing auf dem echten Display",
-  "payload": "payload.hbs",
+  "version": "3.0",
+  "description": "Screen-Demo als .py -> .hb",
+  "payload": "main.py",
   "output": "screen_demo.hb"
 }

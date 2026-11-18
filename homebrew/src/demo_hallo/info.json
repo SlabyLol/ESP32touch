@@ -1,8 +1,8 @@
 {
   "title": "Hallo DarkFox",
   "author": "SlabyLol",
-  "version": "2.0",
-  "description": "Demo-Script mit CLEAR TEXT WAIT",
-  "payload": "payload.hbs",
+  "version": "3.0",
+  "description": "Demo in Python-Datei, wird zu .hb",
+  "payload": "main.py",
   "output": "hallo.hb"
 }

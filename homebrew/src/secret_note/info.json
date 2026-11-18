@@ -1,8 +1,8 @@
 {
   "title": "Geheime Notiz",
   "author": "SlabyLol",
-  "version": "2.0",
-  "description": "Script mit Hinweisen",
-  "payload": "payload.hbs",
+  "version": "3.0",
+  "description": "Demo in C#-Datei, wird zu .hb",
+  "payload": "main.cs",
   "output": "secret_note.hb"
 }

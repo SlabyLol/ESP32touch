@@ -1,8 +1,8 @@
 {
   "title": "Station Info",
   "author": "DarkFox",
-  "version": "2.0",
-  "description": "Info-Script ueber die Station",
-  "payload": "payload.hbs",
+  "version": "3.0",
+  "description": "Demo in C++-Datei, wird zu .hb",
+  "payload": "main.cpp",
   "output": "station_info.hb"
 }

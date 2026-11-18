@@ -1,40 +1,45 @@
 # HomeBrew
 
-Programme fuer die Station: **Script-Sprache** (`.hbs`), gebaut zu verschluesselten `.hb`.
+## Regel
 
-## Wichtig
+1. Programmieren nur in **`.py`**, **`.cpp`** oder **`.cs`**
+2. Builder macht daraus **`.hb`**
+3. Nur **`.hb`** auf die SD / ins Release
 
-| Idee | Realitaet |
-|------|-----------|
-| C / C++ / Python auf der SD | Nein – ESP32 laedt keinen nativen Code von SD in dieser Firmware |
-| Echtes MP4 abspielen | Nein – zu wenig RAM/CPU ohne Spezial-Port |
-| Scripts mit Screen, Farben, Touch | Ja |
-| `.hb` per GitHub Actions bauen + Release | Ja |
-
-## Programmieren
-
-Datei `homebrew/src/<name>/payload.hbs`:
-
-```
-CLEAR
-COLOR ORANGE
-CENTER 40 Mein Programm
-TEXT 20 80 Hello
-WAIT 1000
-WAIT_TOUCH
-```
-
-Befehle: `CLEAR`, `COLOR`, `TEXT x y`, `CENTER y`, `WAIT ms`, `WAIT_TOUCH`, `BTN`
-
-## Bauen
-
-Lokal:
 ```bash
 python tools/pack_homebrew.py --build
 ```
 
-CI: bei jedem Push auf `main` werden alle `.hb` gebaut und im GitHub Release mitgeliefert (`homebrew-*.zip` + einzelne `.hb`).
+Andere Endungen (`.txt`, `.hbs`, …) werden abgelehnt.
 
-## Auf die SD
+## Projekt
 
-`homebrew/out/*.hb` nach `/homebrew/` auf der SD kopieren.
+```
+homebrew/src/mein_ding/
+  info.json
+  main.py      # oder main.cpp oder main.cs
+```
+
+`info.json`:
+```json
+{
+  "title": "Mein Ding",
+  "author": "Du",
+  "version": "1.0",
+  "description": "...",
+  "payload": "main.py",
+  "output": "mein_ding.hb"
+}
+```
+
+## Befehle im Quellcode
+
+In der `.py` / `.cpp` / `.cs` stehen die HomeBrew-Anzeige-Befehle:
+
+`CLEAR` `COLOR` `TEXT` `CENTER` `WAIT` `WAIT_TOUCH`
+
+(Das ist kein voller Python-/C++-/C#-Compiler auf dem ESP32 – die Datei wird verschluesselt nach `.hb` gepackt und die Befehle werden dort ausgefuehrt.)
+
+## CI
+
+GitHub Actions baut alle Projekte zu `.hb` und legt sie ins Release.

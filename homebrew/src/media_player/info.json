@@ -1,8 +1,8 @@
 {
   "title": "Media Player",
   "author": "DarkFox",
-  "version": "1.0",
-  "description": "Kein echtes MP4 – Player-Hinweis als HomeBrew Script",
-  "payload": "payload.hbs",
+  "version": "3.0",
+  "description": "Media-Hinweis als .cs -> .hb",
+  "payload": "main.cs",
   "output": "media_player.hb"
 }
