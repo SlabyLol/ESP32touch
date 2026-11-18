@@ -1,0 +1,8 @@
+{
+  "title": "Hallo DarkFox",
+  "author": "SlabyLol",
+  "version": "1.0",
+  "description": "Erstes HomeBrew Demo mit Begruessung",
+  "payload": "payload.txt",
+  "output": "hallo.hb"
+}

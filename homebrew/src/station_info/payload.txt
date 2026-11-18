@@ -1,0 +1,10 @@
+DarkFox Raspberry Pi Station
+ESP32 + ST7789 Touch + SD
+
+Features:
+- PIN Schutz
+- WLAN + Uhr
+- WAD Runner
+- HomeBrew .hb Format
+
+SD: /homebrew/ fuer .hb Dateien

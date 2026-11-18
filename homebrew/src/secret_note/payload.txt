@@ -1,0 +1,4 @@
+PIN Hinweis: aendere CONSOLE_PIN in main.cpp
+WLAN liegt in info.txt auf der SD
+WADs nach /wads/ legen
+HomeBrew nach /homebrew/ legen

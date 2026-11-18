@@ -1,0 +1,8 @@
+{
+  "title": "Geheime Notiz",
+  "author": "SlabyLol",
+  "version": "1.0",
+  "description": "Verschluesselte Notiz nur fuer die Station",
+  "payload": "payload.txt",
+  "output": "secret_note.hb"
+}

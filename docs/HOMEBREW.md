@@ -1,12 +1,21 @@
 # DarkFox HomeBrew Format (.hb)
 
-Eigenes Dateiformat fuer die ESP32touch Station. Verschluesselt, eigener Name, eigener Aufbau.
+## Builder
+
+```bash
+python tools/pack_homebrew.py --build
+```
+
+Quellen: `homebrew/src/<projekt>/`
+Ausgabe: `homebrew/out/*.hb`
+
+Siehe auch `homebrew/README.md`.
 
 ## Dateiendung
 
 `.hb`
 
-## Speicherorte auf der SD
+## SD-Ordner
 
 - `/`
 - `/homebrew/`
@@ -19,24 +28,24 @@ Eigenes Dateiformat fuer die ESP32touch Station. Verschluesselt, eigener Name, e
 |--------|---------|--------|
 | 0 | 4 | Magic `HB01` |
 | 4 | 1 | Version `1` |
-| 5 | 1 | Flags `0` |
-| 6 | 2 | Title-Laenge (uint16 little-endian) |
-| 8 | N | Titel (verschluesselt) |
-| 8+N | 4 | Payload-Laenge (uint32 little-endian) |
-| 12+N | M | Payload (verschluesselt) |
+| 5 | 1 | Flags |
+| 6 | 2 | Title-Laenge (uint16 LE) |
+| 8 | N | Titel verschluesselt |
+| 8+N | 4 | Payload-Laenge (uint32 LE) |
+| 12+N | M | Payload verschluesselt |
+
+Payload enthaelt vorne Meta-Zeilen aus info.json:
+
+```
+# HomeBrew
+title=...
+author=...
+version=...
+description=...
+---
+<payload datei>
+```
 
 ## Verschluesselung
 
-Stream-XOR mit Schluessel `DarkFoxHB-2026` und positionsabhaengigem Mixer.
-Titel startet bei Offset 0 im Keystream, Payload bei Offset = Title-Laenge.
-
-Nicht fuer echte Geheimnisse gedacht – schuetzt vor einfachem Mitlesen auf der SD.
-
-## Dateien erzeugen (PC)
-
-```bash
-python tools/pack_homebrew.py "Mein Homebrew" --text "Hallo Welt" mein.hb
-python tools/pack_homebrew.py "Levelpack" data.bin level.hb
-```
-
-`.hb` auf die SD kopieren, auf dem Display **HomeBrew** oeffnen.
+Stream-XOR, Schluessel `DarkFoxHB-2026`.
