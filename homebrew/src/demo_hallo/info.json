@@ -1,8 +1,0 @@
-{
-  "title": "Hallo DarkFox",
-  "author": "SlabyLol",
-  "version": "3.0",
-  "description": "Demo in Python-Datei, wird zu .hb",
-  "payload": "main.py",
-  "output": "hallo.hb"
-}
