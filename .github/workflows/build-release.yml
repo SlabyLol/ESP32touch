@@ -31,13 +31,23 @@ jobs:
       - name: Build firmware
         run: pio run -e esp32dev
 
-      - name: Upload build artifact
+      - name: Build HomeBrew packages
+        run: python tools/pack_homebrew.py --build
+
+      - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
           name: firmware-esp32dev
           path: |
             .pio/build/esp32dev/firmware.bin
             .pio/build/esp32dev/firmware.elf
+          retention-days: 30
+
+      - name: Upload HomeBrew artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-hb
+          path: homebrew/out/*.hb
           retention-days: 30
 
   release:
@@ -49,11 +59,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download artifact
+      - name: Download firmware
         uses: actions/download-artifact@v4
         with:
           name: firmware-esp32dev
           path: dist
+
+      - name: Download HomeBrew
+        uses: actions/download-artifact@v4
+        with:
+          name: homebrew-hb
+          path: dist/hb
 
       - name: Generate version
         id: version
@@ -62,12 +78,14 @@ jobs:
           DATE=$(date -u +%Y%m%d-%H%M)
           VERSION="v${DATE}-${SHORT_SHA}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Release version: ${VERSION}"
 
-      - name: Rename firmware files
+      - name: Prepare release files
         run: |
           mv dist/firmware.bin "dist/ESP32touch-${{ steps.version.outputs.version }}.bin"
           mv dist/firmware.elf "dist/ESP32touch-${{ steps.version.outputs.version }}.elf"
+          mkdir -p dist/homebrew
+          cp dist/hb/*.hb dist/homebrew/ || true
+          cd dist && zip -r "homebrew-${{ steps.version.outputs.version }}.zip" homebrew
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -77,6 +95,8 @@ jobs:
           files: |
             dist/ESP32touch-${{ steps.version.outputs.version }}.bin
             dist/ESP32touch-${{ steps.version.outputs.version }}.elf
+            dist/homebrew-${{ steps.version.outputs.version }}.zip
+            dist/homebrew/*.hb
           generate_release_notes: true
           draft: false
           prerelease: false

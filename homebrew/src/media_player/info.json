@@ -1,0 +1,8 @@
+{
+  "title": "Media Player",
+  "author": "DarkFox",
+  "version": "1.0",
+  "description": "Kein echtes MP4 – Player-Hinweis als HomeBrew Script",
+  "payload": "payload.hbs",
+  "output": "media_player.hb"
+}
