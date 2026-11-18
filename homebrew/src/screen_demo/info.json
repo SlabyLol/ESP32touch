@@ -1,8 +1,0 @@
-{
-  "title": "Screen Demo",
-  "author": "DarkFox",
-  "version": "3.0",
-  "description": "Screen-Demo als .py -> .hb",
-  "payload": "main.py",
-  "output": "screen_demo.hb"
-}
