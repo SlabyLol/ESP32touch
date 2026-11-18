@@ -11,15 +11,40 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  homebrew:
+    name: Build HomeBrew (.py/.cpp/.cs -> .hb)
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Pack all HomeBrew sources
+        run: |
+          python tools/pack_homebrew.py --build
+          echo "--- built files ---"
+          ls -la homebrew/out/
+          for f in homebrew/out/*.hb; do
+            echo "FILE $f ($(wc -c < "$f") bytes)"
+          done
+
+      - name: Upload .hb artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-hb
+          path: homebrew/out/*.hb
+          if-no-files-found: error
+          retention-days: 30
+
+  firmware:
+    name: Build Firmware
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -31,10 +56,7 @@ jobs:
       - name: Build firmware
         run: pio run -e esp32dev
 
-      - name: Build HomeBrew packages
-        run: python tools/pack_homebrew.py --build
-
-      - name: Upload firmware artifact
+      - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
           name: firmware-esp32dev
@@ -43,21 +65,13 @@ jobs:
             .pio/build/esp32dev/firmware.elf
           retention-days: 30
 
-      - name: Upload HomeBrew artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: homebrew-hb
-          path: homebrew/out/*.hb
-          retention-days: 30
-
   release:
-    needs: build
+    name: Release firmware + HomeBrew
+    needs: [homebrew, firmware]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Download firmware
         uses: actions/download-artifact@v4
@@ -78,20 +92,30 @@ jobs:
           DATE=$(date -u +%Y%m%d-%H%M)
           VERSION="v${DATE}-${SHORT_SHA}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Release ${VERSION}"
+          ls -la dist/hb/
 
       - name: Prepare release files
         run: |
           mv dist/firmware.bin "dist/ESP32touch-${{ steps.version.outputs.version }}.bin"
           mv dist/firmware.elf "dist/ESP32touch-${{ steps.version.outputs.version }}.elf"
           mkdir -p dist/homebrew
-          cp dist/hb/*.hb dist/homebrew/ || true
+          cp dist/hb/*.hb dist/homebrew/
           cd dist && zip -r "homebrew-${{ steps.version.outputs.version }}.zip" homebrew
+          ls -la dist/homebrew/
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## Firmware
+            - ESP32touch-*.bin / .elf
+
+            ## HomeBrew (.hb from .py / .cpp / .cs)
+            - homebrew-*.zip
+            - einzelne .hb Dateien
           files: |
             dist/ESP32touch-${{ steps.version.outputs.version }}.bin
             dist/ESP32touch-${{ steps.version.outputs.version }}.elf
