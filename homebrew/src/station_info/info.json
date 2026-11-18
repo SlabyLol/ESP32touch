@@ -1,8 +1,8 @@
 {
   "title": "Station Info",
   "author": "DarkFox",
-  "version": "1.1",
-  "description": "Kurze Stations-Informationen",
-  "payload": "payload.txt",
+  "version": "2.0",
+  "description": "Info-Script ueber die Station",
+  "payload": "payload.hbs",
   "output": "station_info.hb"
 }

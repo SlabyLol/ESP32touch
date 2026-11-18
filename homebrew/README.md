@@ -1,60 +1,66 @@
-# HomeBrew Builder
+# HomeBrew – programmieren fuer DarkFox Station
 
-Eigenes verschluesseltes Format **`.hb`** fuer ESP32touch.
+Eigene Programme als verschluesselte `.hb` Dateien. Keine extra Firmware.
 
-## Struktur
-
-```
-homebrew/
-  src/                  <- deine Projekte
-    demo_hallo/
-      info.json         <- Titel, Author, Version, Beschreibung
-      payload.txt       <- Inhalt
-    station_info/
-    secret_note/
-  out/                  <- fertige .hb nach dem Build
-```
-
-## Bauen
+## Schnellstart
 
 ```bash
 python tools/pack_homebrew.py --build
 ```
 
-Erzeugt alle `.hb` Dateien nach `homebrew/out/`.
+Fertige Dateien liegen in `homebrew/out/`. Auf die SD nach `/homebrew/` kopieren.
 
-## Neues Projekt anlegen
+## Neues Programm schreiben
 
-1. Ordner unter `homebrew/src/mein_projekt/` erstellen
-2. `info.json` + `payload.txt` (oder andere Payload-Datei) anlegen
+1. Ordner anlegen: `homebrew/src/mein_spiel/`
+2. `info.json` + `payload.hbs` (Script)
 3. `python tools/pack_homebrew.py --build`
 
-### info.json Beispiel
+### info.json
 
 ```json
 {
-  "title": "Mein Homebrew",
-  "author": "DeinName",
+  "title": "Mein Spiel",
+  "author": "Du",
   "version": "1.0",
-  "description": "Was es macht",
-  "payload": "payload.txt",
-  "output": "mein_homebrew.hb"
+  "description": "Kurze Beschreibung",
+  "payload": "payload.hbs",
+  "output": "mein_spiel.hb"
 }
 ```
 
-## Auf die SD
+### Script-Sprache (payload.hbs)
 
-Inhalt von `homebrew/out/` nach:
+| Befehl | Bedeutung |
+|--------|-----------|
+| `CLEAR` | Bildschirm schwarz |
+| `COLOR ROT` | Farbe: RED GREEN BLUE WHITE YELLOW CYAN ORANGE MAGENTA NAVY oder Hex `FF8800` |
+| `TEXT x y Text` | Text an Position |
+| `CENTER y Text` | Text zentriert |
+| `WAIT 1000` | Warten in ms (max 10000) |
+| `WAIT_TOUCH` | Warten bis Touch |
+| `BTN` | wie WAIT_TOUCH |
+| `# Kommentar` | wird ignoriert |
 
-- `/homebrew/` auf der SD
-- oder Root `/`
-- oder `/hb/`
+### Beispiel
 
-Dann auf dem Display **HomeBrew** oeffnen.
+```
+CLEAR
+COLOR ORANGE
+CENTER 40 Mein Homebrew
+COLOR WHITE
+TEXT 20 90 Zeile eins
+WAIT 1000
+COLOR GREEN
+CENTER 160 Touch zum Ende
+WAIT_TOUCH
+```
 
-## Einzeldatei ohne Projektordner
+## Struktur
 
-```bash
-python tools/pack_homebrew.py "Titel" --text "Text hier" datei.hb
-python tools/pack_homebrew.py "Titel" input.bin datei.hb
+```
+homebrew/
+  src/<projekt>/info.json
+  src/<projekt>/payload.hbs
+  out/*.hb
 ```

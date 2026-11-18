@@ -1,8 +1,8 @@
 {
   "title": "Hallo DarkFox",
   "author": "SlabyLol",
-  "version": "1.0",
-  "description": "Erstes HomeBrew Demo mit Begruessung",
-  "payload": "payload.txt",
+  "version": "2.0",
+  "description": "Demo-Script mit CLEAR TEXT WAIT",
+  "payload": "payload.hbs",
   "output": "hallo.hb"
 }
