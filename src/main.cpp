@@ -5,25 +5,20 @@
 #include <WiFi.h>
 #include <time.h>
 
-// ---------- Display ----------
 TFT_eSPI tft = TFT_eSPI();
 #define TFT_BL_PIN 27
 
-// ---------- SD-Karte (Standard-VSPI-Bus dieses Boards) ----------
 #define SD_CS   5
 #define SD_MOSI 23
 #define SD_MISO 19
 #define SD_SCK  18
 SPIClass sdSPI(VSPI);
 
-// ---------- PIN ----------
 const char* CONSOLE_PIN = "1234";
 
-// ---------- WLAN ----------
 String wifiSSID;
 String wifiPASS;
 
-// ---------- Rotierende Texte ----------
 const char* defaultTexts[] = {
   "Willkommen!",
   "DarkFox Station",
@@ -44,59 +39,55 @@ unsigned long lastClockUpdate = 0;
 const unsigned long CLOCK_UPDATE_MS = 1000;
 bool timeReady = false;
 
-// ---------- WAD Runner ----------
-#define MAX_WADS 50
+// ---------- HomeBrew Format ----------
+// Magic "HB01" | ver | flags | titleLen(u16) | title(enc) | payloadLen(u32) | payload(enc)
+#define HB_MAGIC0 'H'
+#define HB_MAGIC1 'B'
+#define HB_MAGIC2 '0'
+#define HB_MAGIC3 '1'
+#define HB_VERSION 1
+#define HB_KEY "DarkFoxHB-2026"
+
+#define MAX_WADS 40
+#define MAX_HB 40
 String wadList[MAX_WADS];
 int wadCount = 0;
 int wadScroll = 0;
 int wadSelected = 0;
-bool inWadMenu = false;
 
-const int DOOM_BTN_X = 10;
-const int DOOM_BTN_Y = 210;
-const int DOOM_BTN_W = 100;
-const int DOOM_BTN_H = 35;
+struct HbEntry {
+  String path;
+  String title;
+  uint32_t payloadSize;
+};
+HbEntry hbList[MAX_HB];
+int hbCount = 0;
+int hbScroll = 0;
+int hbSelected = 0;
 
-const int WAD_LIST_TOP = 40;
-const int WAD_ROW_H = 28;
-const int WAD_VISIBLE = 5;
+enum MenuMode { MODE_HOME, MODE_WAD, MODE_HB };
+MenuMode menuMode = MODE_HOME;
 
-const int BTN_BACK_X = 5;
-const int BTN_BACK_Y = 200;
-const int BTN_BACK_W = 70;
-const int BTN_BACK_H = 32;
+const int BTN1_X = 10,  BTN1_Y = 210, BTN1_W = 90,  BTN1_H = 35; // WADs
+const int BTN2_X = 115, BTN2_Y = 210, BTN2_W = 100, BTN2_H = 35; // HomeBrew
 
-const int BTN_UP_X = 85;
-const int BTN_UP_Y = 200;
-const int BTN_UP_W = 50;
-const int BTN_UP_H = 32;
+const int LIST_TOP = 40;
+const int ROW_H = 28;
+const int VISIBLE = 5;
 
-const int BTN_DOWN_X = 145;
-const int BTN_DOWN_Y = 200;
-const int BTN_DOWN_W = 50;
-const int BTN_DOWN_H = 32;
-
-const int BTN_RUN_X = 205;
-const int BTN_RUN_Y = 200;
-const int BTN_RUN_W = 105;
-const int BTN_RUN_H = 32;
+const int BTN_BACK_X = 5,   BTN_BACK_Y = 200, BTN_BACK_W = 70,  BTN_BACK_H = 32;
+const int BTN_UP_X   = 85,  BTN_UP_Y   = 200, BTN_UP_W   = 50,  BTN_UP_H   = 32;
+const int BTN_DOWN_X = 145, BTN_DOWN_Y = 200, BTN_DOWN_W = 50,  BTN_DOWN_H = 32;
+const int BTN_RUN_X  = 205, BTN_RUN_Y  = 200, BTN_RUN_W  = 105, BTN_RUN_H  = 32;
 
 unsigned long lastTouchTime = 0;
 const unsigned long TOUCH_DEBOUNCE_MS = 280;
 
-// ---------- Touch-Kalibrierung ----------
 uint16_t calData[5] = { 300, 3600, 300, 3600, 1 };
 
-// ---------- PIN-Keypad ----------
-struct KeyButton {
-  int x, y, w, h;
-  char label[4];
-};
+struct KeyButton { int x, y, w, h; char label[4]; };
 KeyButton keys[12];
-const int KEY_W = 70;
-const int KEY_H = 45;
-const int KEY_GAP = 6;
-const int KEYPAD_TOP = 115;
+const int KEY_W = 70, KEY_H = 45, KEY_GAP = 6, KEYPAD_TOP = 115;
 
 void buildKeypad() {
   const char* labels[12] = {"1","2","3","4","5","6","7","8","9","C","0","OK"};
@@ -159,64 +150,59 @@ bool waitForPin() {
   drawPasswordScreen();
   String input = "";
   unsigned long lastTouch = 0;
-
   while (true) {
     if (Serial.available()) {
       char c = Serial.read();
       if (c == '\n') {
-        if (input == CONSOLE_PIN) {
-          tft.setRotation(1);
-          return true;
-        }
-        Serial.println("Falsche PIN");
-        input = "";
-        drawPinDisplay(input);
-      } else if (c == '\r') {
+        if (input == CONSOLE_PIN) { tft.setRotation(1); return true; }
+        input = ""; drawPinDisplay(input);
       } else if (c == 8 || c == 127) {
         if (input.length() > 0) input.remove(input.length() - 1);
         drawPinDisplay(input);
       } else if (isDigit(c)) {
-        input += c;
-        drawPinDisplay(input);
+        input += c; drawPinDisplay(input);
       }
     }
-
     uint16_t tx, ty;
     if (millis() - lastTouch > 250 && tft.getTouch(&tx, &ty)) {
       lastTouch = millis();
       char key = getPressedKey(tx, ty);
-      if (key == 'C') {
-        input = "";
-        drawPinDisplay(input);
-      } else if (key == 'O') {
-        if (input == CONSOLE_PIN) {
-          tft.setRotation(1);
-          return true;
-        }
-        input = "";
-        drawPinDisplay(input);
+      if (key == 'C') { input = ""; drawPinDisplay(input); }
+      else if (key == 'O') {
+        if (input == CONSOLE_PIN) { tft.setRotation(1); return true; }
+        input = ""; drawPinDisplay(input);
       } else if (key >= '0' && key <= '9') {
-        input += key;
-        drawPinDisplay(input);
+        input += key; drawPinDisplay(input);
       }
     }
   }
 }
 
-// ---------- SD Helpers ----------
+// ---------- Encryption (stream XOR with position-dependent key) ----------
+uint8_t hbKeyByte(uint32_t pos) {
+  const char* k = HB_KEY;
+  size_t len = strlen(k);
+  uint8_t b = (uint8_t)k[pos % len];
+  b ^= (uint8_t)(pos * 31u + 17u);
+  b ^= (uint8_t)(pos >> 8);
+  return b;
+}
+
+void hbCrypt(uint8_t* data, size_t len, uint32_t offset) {
+  for (size_t i = 0; i < len; i++) {
+    data[i] ^= hbKeyByte(offset + (uint32_t)i);
+  }
+}
+
+// ---------- SD ----------
 bool loadWifiCredentials() {
   File f = SD.open("/info.txt");
   if (!f) return false;
   while (f.available()) {
     String line = f.readStringUntil('\n');
     line.trim();
-    if (line.startsWith("SSID:")) {
-      wifiSSID = line.substring(5);
-      wifiSSID.trim();
-    } else if (line.startsWith("PASS:")) {
-      wifiPASS = line.substring(5);
-      wifiPASS.trim();
-    }
+    if (line.startsWith("SSID:")) { wifiSSID = line.substring(5); wifiSSID.trim(); }
+    else if (line.startsWith("PASS:")) { wifiPASS = line.substring(5); wifiPASS.trim(); }
   }
   f.close();
   return wifiSSID.length() > 0;
@@ -233,9 +219,7 @@ void loadRotatingTexts() {
   while (f.available() && rotatingTextCount < MAX_TEXTS) {
     String line = f.readStringUntil('\n');
     line.trim();
-    if (line.length() > 0) {
-      rotatingTexts[rotatingTextCount++] = line;
-    }
+    if (line.length() > 0) rotatingTexts[rotatingTextCount++] = line;
   }
   f.close();
   if (rotatingTextCount == 0) {
@@ -244,32 +228,27 @@ void loadRotatingTexts() {
   }
 }
 
-bool isWadFile(const String &name) {
+bool endsWithIgnoreCase(const String& name, const char* ext) {
   String lower = name;
   lower.toLowerCase();
-  return lower.endsWith(".wad");
+  return lower.endsWith(ext);
 }
 
 void scanWadsInDir(const char* path) {
   File dir = SD.open(path);
   if (!dir || !dir.isDirectory()) return;
-
   File entry = dir.openNextFile();
   while (entry && wadCount < MAX_WADS) {
     if (!entry.isDirectory()) {
       String name = entry.name();
-      // name kann voller Pfad sein
       int slash = name.lastIndexOf('/');
       if (slash >= 0) name = name.substring(slash + 1);
-
-      if (isWadFile(name)) {
+      if (endsWithIgnoreCase(name, ".wad")) {
         String fullPath = String(path);
         if (!fullPath.endsWith("/")) fullPath += "/";
         if (fullPath == "//") fullPath = "/";
         fullPath += name;
-        wadList[wadCount] = fullPath;
-        wadCount++;
-        Serial.printf("WAD gefunden: %s (%u bytes)\n", fullPath.c_str(), entry.size());
+        wadList[wadCount++] = fullPath;
       }
     }
     entry.close();
@@ -279,18 +258,88 @@ void scanWadsInDir(const char* path) {
 }
 
 void scanAllWads() {
-  wadCount = 0;
-  wadScroll = 0;
-  wadSelected = 0;
+  wadCount = 0; wadScroll = 0; wadSelected = 0;
   scanWadsInDir("/");
   scanWadsInDir("/wads");
   scanWadsInDir("/WADS");
   scanWadsInDir("/doom");
   scanWadsInDir("/DOOM");
-  Serial.printf("Gesamt %d WADs gefunden\n", wadCount);
+}
+
+bool readHomeBrewHeader(const String& path, String& outTitle, uint32_t& outPayloadSize) {
+  File f = SD.open(path);
+  if (!f) return false;
+  if (f.size() < 12) { f.close(); return false; }
+
+  uint8_t hdr[8];
+  if (f.read(hdr, 8) != 8) { f.close(); return false; }
+  if (hdr[0] != HB_MAGIC0 || hdr[1] != HB_MAGIC1 || hdr[2] != HB_MAGIC2 || hdr[3] != HB_MAGIC3) {
+    f.close();
+    return false;
+  }
+  if (hdr[4] != HB_VERSION) { f.close(); return false; }
+
+  uint16_t titleLen = (uint16_t)hdr[6] | ((uint16_t)hdr[7] << 8);
+  if (titleLen == 0 || titleLen > 64) { f.close(); return false; }
+
+  uint8_t titleBuf[65];
+  if (f.read(titleBuf, titleLen) != (int)titleLen) { f.close(); return false; }
+  hbCrypt(titleBuf, titleLen, 0);
+  titleBuf[titleLen] = 0;
+  outTitle = String((char*)titleBuf);
+
+  uint8_t sz[4];
+  if (f.read(sz, 4) != 4) { f.close(); return false; }
+  outPayloadSize = (uint32_t)sz[0] | ((uint32_t)sz[1] << 8) | ((uint32_t)sz[2] << 16) | ((uint32_t)sz[3] << 24);
+  f.close();
+  return true;
+}
+
+void scanHbInDir(const char* path) {
+  File dir = SD.open(path);
+  if (!dir || !dir.isDirectory()) return;
+  File entry = dir.openNextFile();
+  while (entry && hbCount < MAX_HB) {
+    if (!entry.isDirectory()) {
+      String name = entry.name();
+      int slash = name.lastIndexOf('/');
+      if (slash >= 0) name = name.substring(slash + 1);
+      if (endsWithIgnoreCase(name, ".hb")) {
+        String fullPath = String(path);
+        if (!fullPath.endsWith("/")) fullPath += "/";
+        if (fullPath == "//") fullPath = "/";
+        fullPath += name;
+
+        String title;
+        uint32_t payloadSize = 0;
+        if (readHomeBrewHeader(fullPath, title, payloadSize)) {
+          hbList[hbCount].path = fullPath;
+          hbList[hbCount].title = title;
+          hbList[hbCount].payloadSize = payloadSize;
+          hbCount++;
+          Serial.printf("HomeBrew: %s -> %s (%u)\n", fullPath.c_str(), title.c_str(), payloadSize);
+        }
+      }
+    }
+    entry.close();
+    entry = dir.openNextFile();
+  }
+  dir.close();
+}
+
+void scanAllHomeBrew() {
+  hbCount = 0; hbScroll = 0; hbSelected = 0;
+  scanHbInDir("/");
+  scanHbInDir("/homebrew");
+  scanHbInDir("/HomeBrew");
+  scanHbInDir("/hb");
 }
 
 // ---------- UI ----------
+bool hit(int tx, int ty, int x, int y, int w, int h) {
+  return tx >= x && tx <= x + w && ty >= y && ty <= y + h;
+}
+
 void showStatus(const char* text) {
   tft.setTextDatum(MC_DATUM);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -299,29 +348,27 @@ void showStatus(const char* text) {
   tft.drawString(text, tft.width() / 2, 205);
 }
 
-void drawDoomButton() {
-  tft.fillRect(DOOM_BTN_X, DOOM_BTN_Y, DOOM_BTN_W, DOOM_BTN_H, TFT_DARKGREY);
-  tft.drawRect(DOOM_BTN_X, DOOM_BTN_Y, DOOM_BTN_W, DOOM_BTN_H, TFT_RED);
+void drawMainButton(int x, int y, int w, int h, const char* label, uint16_t border) {
+  tft.fillRect(x, y, w, h, TFT_DARKGREY);
+  tft.drawRect(x, y, w, h, border);
   tft.setTextDatum(MC_DATUM);
   tft.setFreeFont(&FreeSans9pt7b);
   tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-  tft.drawString("WADs", DOOM_BTN_X + DOOM_BTN_W / 2, DOOM_BTN_Y + DOOM_BTN_H / 2);
+  tft.drawString(label, x + w / 2, y + h / 2);
 }
 
 void drawStaticLayout() {
-  inWadMenu = false;
+  menuMode = MODE_HOME;
   tft.fillScreen(TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
-
   tft.setTextColor(TFT_ORANGE, TFT_BLACK);
   tft.setFreeFont(&FreeSansBold24pt7b);
   tft.drawString("DarkFox", tft.width() / 2, 40);
-
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setFreeFont(&FreeSans12pt7b);
   tft.drawString("Raspberry Pi Station", tft.width() / 2, 80);
-
-  drawDoomButton();
+  drawMainButton(BTN1_X, BTN1_Y, BTN1_W, BTN1_H, "WADs", TFT_RED);
+  drawMainButton(BTN2_X, BTN2_Y, BTN2_W, BTN2_H, "HomeBrew", TFT_MAGENTA);
 }
 
 void updateClock() {
@@ -337,7 +384,7 @@ void updateClock() {
 }
 
 void updateRotatingText() {
-  if (rotatingTextCount == 0 || inWadMenu) return;
+  if (rotatingTextCount == 0 || menuMode != MODE_HOME) return;
   tft.setTextDatum(MC_DATUM);
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
   tft.setFreeFont(&FreeSans12pt7b);
@@ -345,7 +392,7 @@ void updateRotatingText() {
   tft.drawString(rotatingTexts[currentTextIndex], tft.width() / 2, 180);
 }
 
-void drawWadButton(int x, int y, int w, int h, const char* label, uint16_t border) {
+void drawListButton(int x, int y, int w, int h, const char* label, uint16_t border) {
   tft.fillRect(x, y, w, h, TFT_DARKGREY);
   tft.drawRect(x, y, w, h, border);
   tft.setTextDatum(MC_DATUM);
@@ -355,14 +402,12 @@ void drawWadButton(int x, int y, int w, int h, const char* label, uint16_t borde
 }
 
 void drawWadMenu() {
-  inWadMenu = true;
+  menuMode = MODE_WAD;
   tft.fillScreen(TFT_BLACK);
-
   tft.setTextDatum(TL_DATUM);
   tft.setFreeFont(&FreeSans12pt7b);
   tft.setTextColor(TFT_ORANGE, TFT_BLACK);
   tft.drawString("WAD Runner", 10, 8);
-
   tft.setFreeFont(&FreeSans9pt7b);
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
   char countBuf[24];
@@ -373,40 +418,67 @@ void drawWadMenu() {
     tft.setTextDatum(MC_DATUM);
     tft.setTextColor(TFT_RED, TFT_BLACK);
     tft.drawString("Keine WADs auf SD", tft.width() / 2, 100);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.drawString("Lege .wad Dateien ins Root", tft.width() / 2, 130);
-    tft.drawString("oder in /wads/", tft.width() / 2, 155);
   } else {
-    for (int i = 0; i < WAD_VISIBLE; i++) {
+    for (int i = 0; i < VISIBLE; i++) {
       int idx = wadScroll + i;
       if (idx >= wadCount) break;
-
-      int y = WAD_LIST_TOP + i * WAD_ROW_H;
+      int y = LIST_TOP + i * ROW_H;
       bool sel = (idx == wadSelected);
-
-      if (sel) {
-        tft.fillRect(5, y, tft.width() - 10, WAD_ROW_H - 2, TFT_NAVY);
-        tft.drawRect(5, y, tft.width() - 10, WAD_ROW_H - 2, TFT_YELLOW);
-      } else {
-        tft.fillRect(5, y, tft.width() - 10, WAD_ROW_H - 2, TFT_BLACK);
-        tft.drawRect(5, y, tft.width() - 10, WAD_ROW_H - 2, TFT_DARKGREY);
-      }
-
+      tft.fillRect(5, y, tft.width() - 10, ROW_H - 2, sel ? TFT_NAVY : TFT_BLACK);
+      tft.drawRect(5, y, tft.width() - 10, ROW_H - 2, sel ? TFT_YELLOW : TFT_DARKGREY);
       String name = wadList[idx];
       int slash = name.lastIndexOf('/');
       if (slash >= 0) name = name.substring(slash + 1);
-
       tft.setTextDatum(ML_DATUM);
       tft.setFreeFont(&FreeSans9pt7b);
       tft.setTextColor(sel ? TFT_YELLOW : TFT_WHITE, sel ? TFT_NAVY : TFT_BLACK);
-      tft.drawString(name, 12, y + (WAD_ROW_H - 2) / 2);
+      tft.drawString(name, 12, y + (ROW_H - 2) / 2);
     }
   }
+  drawListButton(BTN_BACK_X, BTN_BACK_Y, BTN_BACK_W, BTN_BACK_H, "Back", TFT_WHITE);
+  drawListButton(BTN_UP_X, BTN_UP_Y, BTN_UP_W, BTN_UP_H, "Up", TFT_CYAN);
+  drawListButton(BTN_DOWN_X, BTN_DOWN_Y, BTN_DOWN_W, BTN_DOWN_H, "Dn", TFT_CYAN);
+  drawListButton(BTN_RUN_X, BTN_RUN_Y, BTN_RUN_W, BTN_RUN_H, "START", TFT_GREEN);
+}
 
-  drawWadButton(BTN_BACK_X, BTN_BACK_Y, BTN_BACK_W, BTN_BACK_H, "Back", TFT_WHITE);
-  drawWadButton(BTN_UP_X, BTN_UP_Y, BTN_UP_W, BTN_UP_H, "Up", TFT_CYAN);
-  drawWadButton(BTN_DOWN_X, BTN_DOWN_Y, BTN_DOWN_W, BTN_DOWN_H, "Dn", TFT_CYAN);
-  drawWadButton(BTN_RUN_X, BTN_RUN_Y, BTN_RUN_W, BTN_RUN_H, "START", TFT_GREEN);
+void drawHbMenu() {
+  menuMode = MODE_HB;
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextDatum(TL_DATUM);
+  tft.setFreeFont(&FreeSans12pt7b);
+  tft.setTextColor(TFT_MAGENTA, TFT_BLACK);
+  tft.drawString("HomeBrew", 10, 8);
+  tft.setFreeFont(&FreeSans9pt7b);
+  tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  char countBuf[24];
+  snprintf(countBuf, sizeof(countBuf), "%d gefunden", hbCount);
+  tft.drawString(countBuf, 200, 12);
+
+  if (hbCount == 0) {
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextColor(TFT_RED, TFT_BLACK);
+    tft.drawString("Keine .hb Dateien", tft.width() / 2, 90);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.drawString("tools/pack_homebrew.py", tft.width() / 2, 120);
+    tft.drawString("auf PC nutzen", tft.width() / 2, 145);
+  } else {
+    for (int i = 0; i < VISIBLE; i++) {
+      int idx = hbScroll + i;
+      if (idx >= hbCount) break;
+      int y = LIST_TOP + i * ROW_H;
+      bool sel = (idx == hbSelected);
+      tft.fillRect(5, y, tft.width() - 10, ROW_H - 2, sel ? TFT_PURPLE : TFT_BLACK);
+      tft.drawRect(5, y, tft.width() - 10, ROW_H - 2, sel ? TFT_YELLOW : TFT_DARKGREY);
+      tft.setTextDatum(ML_DATUM);
+      tft.setFreeFont(&FreeSans9pt7b);
+      tft.setTextColor(sel ? TFT_YELLOW : TFT_WHITE, sel ? TFT_PURPLE : TFT_BLACK);
+      tft.drawString(hbList[idx].title, 12, y + (ROW_H - 2) / 2);
+    }
+  }
+  drawListButton(BTN_BACK_X, BTN_BACK_Y, BTN_BACK_W, BTN_BACK_H, "Back", TFT_WHITE);
+  drawListButton(BTN_UP_X, BTN_UP_Y, BTN_UP_W, BTN_UP_H, "Up", TFT_CYAN);
+  drawListButton(BTN_DOWN_X, BTN_DOWN_Y, BTN_DOWN_W, BTN_DOWN_H, "Dn", TFT_CYAN);
+  drawListButton(BTN_RUN_X, BTN_RUN_Y, BTN_RUN_W, BTN_RUN_H, "OPEN", TFT_GREEN);
 }
 
 void showWadRunScreen(int idx) {
@@ -414,95 +486,124 @@ void showWadRunScreen(int idx) {
   String name = path;
   int slash = name.lastIndexOf('/');
   if (slash >= 0) name = name.substring(slash + 1);
-
   uint32_t size = 0;
   File f = SD.open(path);
-  if (f) {
-    size = f.size();
-    f.close();
-  }
+  if (f) { size = f.size(); f.close(); }
 
   tft.fillScreen(TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
   tft.setFreeFont(&FreeSans12pt7b);
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
-  tft.drawString("WAD ausgewaehlt", tft.width() / 2, 40);
-
+  tft.drawString("WAD ausgewaehlt", tft.width() / 2, 50);
   tft.setFreeFont(&FreeSans9pt7b);
   tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-  tft.drawString(name, tft.width() / 2, 80);
+  tft.drawString(name, tft.width() / 2, 90);
+  char sizeBuf[32];
+  snprintf(sizeBuf, sizeof(sizeBuf), size >= 1024*1024 ? "%.1f MB" : "%u KB",
+           size >= 1024*1024 ? size/(1024.0f*1024.0f) : (unsigned)(size/1024));
+  tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  tft.drawString(sizeBuf, tft.width() / 2, 120);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawString("Datei auf SD bereit", tft.width() / 2, 160);
+  delay(2500);
+  drawWadMenu();
+}
+
+void showHbOpenScreen(int idx) {
+  HbEntry &e = hbList[idx];
+
+  // Payload lesen und entschluesseln (max 2KB fuer Anzeige)
+  File f = SD.open(e.path);
+  String preview = "";
+  if (f) {
+    // skip header: 8 + titleLen + 4
+    f.seek(6);
+    uint8_t tl[2];
+    f.read(tl, 2);
+    uint16_t titleLen = (uint16_t)tl[0] | ((uint16_t)tl[1] << 8);
+    f.seek(8 + titleLen + 4);
+    size_t toRead = e.payloadSize;
+    if (toRead > 512) toRead = 512;
+    uint8_t buf[513];
+    int n = f.read(buf, toRead);
+    f.close();
+    if (n > 0) {
+      hbCrypt(buf, (size_t)n, titleLen); // payload starts after title in key stream offset = titleLen
+      // Fix: payload encrypt offset is titleLen in our packer
+      buf[n] = 0;
+      // printable preview
+      for (int i = 0; i < n; i++) {
+        char c = (char)buf[i];
+        if (c >= 32 && c < 127) preview += c;
+        else if (c == '\n' || c == '\r') preview += ' ';
+      }
+      if (preview.length() > 80) preview = preview.substring(0, 80) + "...";
+    }
+  }
+
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+  tft.setFreeFont(&FreeSans12pt7b);
+  tft.setTextColor(TFT_MAGENTA, TFT_BLACK);
+  tft.drawString("HomeBrew", tft.width() / 2, 30);
+  tft.setFreeFont(&FreeSans9pt7b);
+  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+  tft.drawString(e.title, tft.width() / 2, 60);
 
   char sizeBuf[32];
-  if (size >= 1024 * 1024) {
-    snprintf(sizeBuf, sizeof(sizeBuf), "%.1f MB", size / (1024.0f * 1024.0f));
-  } else {
-    snprintf(sizeBuf, sizeof(sizeBuf), "%u KB", (unsigned)(size / 1024));
-  }
+  snprintf(sizeBuf, sizeof(sizeBuf), "%u bytes", (unsigned)e.payloadSize);
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
-  tft.drawString(sizeBuf, tft.width() / 2, 110);
+  tft.drawString(sizeBuf, tft.width() / 2, 90);
 
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.drawString("Zum echten Spielen", tft.width() / 2, 150);
-  tft.drawString("Doom-Firmware flashen", tft.width() / 2, 175);
-  tft.drawString("WAD bleibt auf der SD", tft.width() / 2, 200);
+  tft.setTextColor(TFT_GREEN, TFT_BLACK);
+  tft.drawString("entschluesselt OK", tft.width() / 2, 120);
 
-  Serial.printf("START WAD: %s (%u bytes)\n", path.c_str(), size);
+  if (preview.length() > 0) {
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setTextDatum(TL_DATUM);
+    tft.drawString(preview, 10, 150);
+  }
+
   delay(3500);
-  drawWadMenu();
+  drawHbMenu();
 }
 
-void openWadMenu() {
-  scanAllWads();
-  drawWadMenu();
-}
-
-bool hit(int tx, int ty, int x, int y, int w, int h) {
-  return tx >= x && tx <= x + w && ty >= y && ty <= y + h;
-}
-
-void handleWadMenuTouch(int tx, int ty) {
+void handleListNav(int tx, int ty, int &selected, int &scroll, int count, void (*redraw)(), void (*runFn)(int)) {
   if (hit(tx, ty, BTN_BACK_X, BTN_BACK_Y, BTN_BACK_W, BTN_BACK_H)) {
     drawStaticLayout();
     updateRotatingText();
     if (timeReady) updateClock();
     return;
   }
-
-  if (wadCount == 0) return;
+  if (count == 0) return;
 
   if (hit(tx, ty, BTN_UP_X, BTN_UP_Y, BTN_UP_W, BTN_UP_H)) {
-    if (wadSelected > 0) {
-      wadSelected--;
-      if (wadSelected < wadScroll) wadScroll = wadSelected;
-      drawWadMenu();
+    if (selected > 0) {
+      selected--;
+      if (selected < scroll) scroll = selected;
+      redraw();
     }
     return;
   }
-
   if (hit(tx, ty, BTN_DOWN_X, BTN_DOWN_Y, BTN_DOWN_W, BTN_DOWN_H)) {
-    if (wadSelected < wadCount - 1) {
-      wadSelected++;
-      if (wadSelected >= wadScroll + WAD_VISIBLE) {
-        wadScroll = wadSelected - WAD_VISIBLE + 1;
-      }
-      drawWadMenu();
+    if (selected < count - 1) {
+      selected++;
+      if (selected >= scroll + VISIBLE) scroll = selected - VISIBLE + 1;
+      redraw();
     }
     return;
   }
-
   if (hit(tx, ty, BTN_RUN_X, BTN_RUN_Y, BTN_RUN_W, BTN_RUN_H)) {
-    showWadRunScreen(wadSelected);
+    runFn(selected);
     return;
   }
-
-  // Direkt auf Listeneintrag tippen
-  for (int i = 0; i < WAD_VISIBLE; i++) {
-    int idx = wadScroll + i;
-    if (idx >= wadCount) break;
-    int y = WAD_LIST_TOP + i * WAD_ROW_H;
-    if (hit(tx, ty, 5, y, tft.width() - 10, WAD_ROW_H - 2)) {
-      wadSelected = idx;
-      drawWadMenu();
+  for (int i = 0; i < VISIBLE; i++) {
+    int idx = scroll + i;
+    if (idx >= count) break;
+    int y = LIST_TOP + i * ROW_H;
+    if (hit(tx, ty, 5, y, tft.width() - 10, ROW_H - 2)) {
+      selected = idx;
+      redraw();
       return;
     }
   }
@@ -511,10 +612,8 @@ void handleWadMenuTouch(int tx, int ty) {
 void setup() {
   Serial.begin(115200);
   delay(1000);
-
   pinMode(TFT_BL_PIN, OUTPUT);
   digitalWrite(TFT_BL_PIN, HIGH);
-
   tft.init();
   tft.setRotation(1);
   tft.setTouch(calData);
@@ -527,15 +626,14 @@ void setup() {
 
   sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
   bool sdOk = SD.begin(SD_CS, sdSPI);
-
   if (!sdOk) {
-    Serial.println("SD-Fehler");
-    showStatus("SD-Fehler, Standardtexte");
+    showStatus("SD-Fehler");
     for (int i = 0; i < defaultTextCount; i++) rotatingTexts[i] = String(defaultTexts[i]);
     rotatingTextCount = defaultTextCount;
   } else {
     loadRotatingTexts();
     scanAllWads();
+    scanAllHomeBrew();
     loadWifiCredentials();
   }
 
@@ -543,12 +641,9 @@ void setup() {
   WiFi.mode(WIFI_STA);
   if (wifiSSID.length() > 0) {
     WiFi.begin(wifiSSID.c_str(), wifiPASS.c_str());
-    unsigned long startAttempt = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 15000) {
-      delay(300);
-    }
+    unsigned long t0 = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 15000) delay(300);
   }
-
   if (WiFi.status() == WL_CONNECTED) {
     showStatus("Hole Uhrzeit...");
     configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org", "time.nist.gov");
@@ -560,11 +655,12 @@ void setup() {
 
   tft.fillRect(0, 190, tft.width(), 30, TFT_BLACK);
   updateRotatingText();
-  drawDoomButton();
+  drawMainButton(BTN1_X, BTN1_Y, BTN1_W, BTN1_H, "WADs", TFT_RED);
+  drawMainButton(BTN2_X, BTN2_Y, BTN2_W, BTN2_H, "HomeBrew", TFT_MAGENTA);
 }
 
 void loop() {
-  if (!inWadMenu) {
+  if (menuMode == MODE_HOME) {
     if (timeReady && millis() - lastClockUpdate > CLOCK_UPDATE_MS) {
       lastClockUpdate = millis();
       updateClock();
@@ -579,11 +675,18 @@ void loop() {
   uint16_t tx, ty;
   if (millis() - lastTouchTime > TOUCH_DEBOUNCE_MS && tft.getTouch(&tx, &ty)) {
     lastTouchTime = millis();
-
-    if (inWadMenu) {
-      handleWadMenuTouch(tx, ty);
-    } else if (hit(tx, ty, DOOM_BTN_X, DOOM_BTN_Y, DOOM_BTN_W, DOOM_BTN_H)) {
-      openWadMenu();
+    if (menuMode == MODE_WAD) {
+      handleListNav(tx, ty, wadSelected, wadScroll, wadCount, drawWadMenu, showWadRunScreen);
+    } else if (menuMode == MODE_HB) {
+      handleListNav(tx, ty, hbSelected, hbScroll, hbCount, drawHbMenu, showHbOpenScreen);
+    } else {
+      if (hit(tx, ty, BTN1_X, BTN1_Y, BTN1_W, BTN1_H)) {
+        scanAllWads();
+        drawWadMenu();
+      } else if (hit(tx, ty, BTN2_X, BTN2_Y, BTN2_W, BTN2_H)) {
+        scanAllHomeBrew();
+        drawHbMenu();
+      }
     }
   }
 }
