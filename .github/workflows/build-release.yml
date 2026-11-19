@@ -12,123 +12,96 @@ permissions:
 
 jobs:
   homebrew:
-    name: Build HomeBrew (.py/.cpp/.cs -> .hb)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Pack all HomeBrew sources
-        run: |
+      - run: |
           python tools/pack_homebrew.py --build
-          ls -la homebrew/out/
           test -n "$(ls -A homebrew/out/*.hb 2>/dev/null)" || exit 1
-
-      - name: Upload .hb artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: homebrew-hb
           path: homebrew/out/*.hb
           if-no-files-found: error
-          retention-days: 30
 
   firmware:
-    name: Build Firmware (CYD BL=21)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Install PlatformIO
-        run: |
+      - run: |
           python -m pip install --upgrade pip
           pip install platformio
-
-      - name: Build ILI9341 firmware
-        run: pio run -e cyd_ili9341
-
-      - name: Build ST7789 firmware
-        run: pio run -e cyd_st7789
-
-      - name: Upload firmware
-        uses: actions/upload-artifact@v4
+      - name: Build all display variants
+        run: |
+          pio run -e cyd_st7789_inv
+          pio run -e cyd_st7789
+          pio run -e cyd_ili9341
+          pio run -e cyd_ili9341_inv
+          pio run -e cyd_st7789_inv_bl_low
+      - uses: actions/upload-artifact@v4
         with:
           name: firmware-cyd
           path: |
-            .pio/build/cyd_ili9341/firmware.bin
-            .pio/build/cyd_ili9341/firmware.elf
+            .pio/build/cyd_st7789_inv/firmware.bin
             .pio/build/cyd_st7789/firmware.bin
-            .pio/build/cyd_st7789/firmware.elf
-          retention-days: 30
+            .pio/build/cyd_ili9341/firmware.bin
+            .pio/build/cyd_ili9341_inv/firmware.bin
+            .pio/build/cyd_st7789_inv_bl_low/firmware.bin
 
   release:
-    name: Release
     needs: [homebrew, firmware]
     if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.homebrew.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download HomeBrew
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: homebrew-hb
           path: dist/hb
-
-      - name: Download firmware
+      - uses: actions/download-artifact@v4
         continue-on-error: true
-        uses: actions/download-artifact@v4
         with:
           name: firmware-cyd
           path: dist/fw
-
-      - name: Generate version
+      - name: Pack release files
         id: version
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           DATE=$(date -u +%Y%m%d-%H%M)
           VERSION="v${DATE}-${SHORT_SHA}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          mkdir -p dist/homebrew dist/out
-          cp dist/hb/*.hb dist/homebrew/ || true
+          mkdir -p dist/out dist/homebrew
+          cp dist/hb/*.hb dist/homebrew/ 2>/dev/null || true
           cd dist && zip -r "out/homebrew-${VERSION}.zip" homebrew || true
-          if [ -f fw/cyd_ili9341/firmware.bin ]; then
-            cp fw/cyd_ili9341/firmware.bin "out/ESP32touch-${VERSION}-ILI9341.bin"
-            cp fw/cyd_ili9341/firmware.elf "out/ESP32touch-${VERSION}-ILI9341.elf"
-          fi
-          if [ -f fw/cyd_st7789/firmware.bin ]; then
-            cp fw/cyd_st7789/firmware.bin "out/ESP32touch-${VERSION}-ST7789.bin"
-            cp fw/cyd_st7789/firmware.elf "out/ESP32touch-${VERSION}-ST7789.elf"
-          fi
-          # artifact download may flatten paths
-          if [ -f fw/firmware.bin ] && [ ! -f out/ESP32touch-${VERSION}-ILI9341.bin ]; then
-            cp fw/firmware.bin "out/ESP32touch-${VERSION}.bin"
-          fi
-          ls -laR dist/out dist/fw 2>/dev/null || true
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+          # Flatten whatever layout artifacts use
+          find fw -name 'firmware.bin' 2>/dev/null | while read f; do
+            dir=$(basename $(dirname "$f"))
+            cp "$f" "out/ESP32touch-${VERSION}-${dir}.bin"
+          done
+          ls -la out/ || true
+      - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: Release ${{ steps.version.outputs.version }}
           body: |
-            ## Firmware (Backlight GPIO 21)
-            - `*-ILI9341.bin` zuerst flashen (häufigstes gelbes Board)
-            - wenn Screen weiter schwarz: `*-ST7789.bin` versuchen
+            ## Welche .bin?
+            1. `*-cyd_st7789_inv.bin` ← **zuerst** (ST7789 + Inversion)
+            2. `*-cyd_st7789.bin`
+            3. `*-cyd_ili9341.bin`
+            4. `*-cyd_ili9341_inv.bin`
+            5. `*-cyd_st7789_inv_bl_low.bin` (Backlight LOW)
 
-            Alte Bins (vor diesem Release) hatten BL an GPIO 27 → schwarzer Screen.
+            Flash mit Arduino IDE Upload oder esptool. USB-Kabel mit Datenleitung, nicht nur Laden.
           files: |
             dist/out/*
             dist/homebrew/*.hb
           fail_on_unmatched_files: false
           generate_release_notes: true
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
