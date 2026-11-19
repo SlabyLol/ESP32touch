@@ -35,24 +35,15 @@ jobs:
         with:
           python-version: "3.11"
       - run: |
-          python -m pip install --upgrade pip
-          pip install platformio
-      - name: Build all display variants
-        run: |
-          pio run -e cyd_st7789_inv
-          pio run -e cyd_st7789
-          pio run -e cyd_ili9341
-          pio run -e cyd_ili9341_inv
-          pio run -e cyd_st7789_inv_bl_low
+          pip install -U pip platformio
+          pio run -e s032_st7789
+          pio run -e s032_st7789_inv
       - uses: actions/upload-artifact@v4
         with:
-          name: firmware-cyd
+          name: firmware-s032
           path: |
-            .pio/build/cyd_st7789_inv/firmware.bin
-            .pio/build/cyd_st7789/firmware.bin
-            .pio/build/cyd_ili9341/firmware.bin
-            .pio/build/cyd_ili9341_inv/firmware.bin
-            .pio/build/cyd_st7789_inv_bl_low/firmware.bin
+            .pio/build/s032_st7789/firmware.bin
+            .pio/build/s032_st7789_inv/firmware.bin
 
   release:
     needs: [homebrew, firmware]
@@ -67,10 +58,9 @@ jobs:
       - uses: actions/download-artifact@v4
         continue-on-error: true
         with:
-          name: firmware-cyd
+          name: firmware-s032
           path: dist/fw
-      - name: Pack release files
-        id: version
+      - id: version
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           DATE=$(date -u +%Y%m%d-%H%M)
@@ -79,7 +69,6 @@ jobs:
           mkdir -p dist/out dist/homebrew
           cp dist/hb/*.hb dist/homebrew/ 2>/dev/null || true
           cd dist && zip -r "out/homebrew-${VERSION}.zip" homebrew || true
-          # Flatten whatever layout artifacts use
           find fw -name 'firmware.bin' 2>/dev/null | while read f; do
             dir=$(basename $(dirname "$f"))
             cp "$f" "out/ESP32touch-${VERSION}-${dir}.bin"
@@ -90,14 +79,12 @@ jobs:
           tag_name: ${{ steps.version.outputs.version }}
           name: Release ${{ steps.version.outputs.version }}
           body: |
-            ## Welche .bin?
-            1. `*-cyd_st7789_inv.bin` ← **zuerst** (ST7789 + Inversion)
-            2. `*-cyd_st7789.bin`
-            3. `*-cyd_ili9341.bin`
-            4. `*-cyd_ili9341_inv.bin`
-            5. `*-cyd_st7789_inv_bl_low.bin` (Backlight LOW)
+            ## ESP32-2432S032 (ST7789, Backlight GPIO **27**)
 
-            Flash mit Arduino IDE Upload oder esptool. USB-Kabel mit Datenleitung, nicht nur Laden.
+            1. **`*-s032_st7789.bin`** zuerst flashen
+            2. Falls Farben inverted: `*-s032_st7789_inv.bin`
+
+            Nicht die alten `*-ILI9341` / BL21 Bins verwenden.
           files: |
             dist/out/*
             dist/homebrew/*.hb
