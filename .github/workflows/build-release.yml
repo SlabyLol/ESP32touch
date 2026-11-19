@@ -24,9 +24,8 @@ jobs:
       - name: Pack all HomeBrew sources
         run: |
           python tools/pack_homebrew.py --build
-          echo "--- built files ---"
           ls -la homebrew/out/
-          test -n "$(ls -A homebrew/out/*.hb 2>/dev/null)" || (echo "Keine .hb gebaut" && exit 1)
+          test -n "$(ls -A homebrew/out/*.hb 2>/dev/null)" || exit 1
 
       - name: Upload .hb artifacts
         uses: actions/upload-artifact@v4
@@ -37,7 +36,7 @@ jobs:
           retention-days: 30
 
   firmware:
-    name: Build Firmware
+    name: Build Firmware (CYD BL=21)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -51,16 +50,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio
 
-      - name: Build firmware
-        run: pio run -e esp32dev
+      - name: Build ILI9341 firmware
+        run: pio run -e cyd_ili9341
+
+      - name: Build ST7789 firmware
+        run: pio run -e cyd_st7789
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
-          name: firmware-esp32dev
+          name: firmware-cyd
           path: |
-            .pio/build/esp32dev/firmware.bin
-            .pio/build/esp32dev/firmware.elf
+            .pio/build/cyd_ili9341/firmware.bin
+            .pio/build/cyd_ili9341/firmware.elf
+            .pio/build/cyd_st7789/firmware.bin
+            .pio/build/cyd_st7789/firmware.elf
           retention-days: 30
 
   release:
@@ -77,12 +81,12 @@ jobs:
           name: homebrew-hb
           path: dist/hb
 
-      - name: Download firmware (optional)
+      - name: Download firmware
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
-          name: firmware-esp32dev
-          path: dist
+          name: firmware-cyd
+          path: dist/fw
 
       - name: Generate version
         id: version
@@ -91,28 +95,37 @@ jobs:
           DATE=$(date -u +%Y%m%d-%H%M)
           VERSION="v${DATE}-${SHORT_SHA}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          mkdir -p dist/homebrew
-          cp dist/hb/*.hb dist/homebrew/
-          cd dist && zip -r "homebrew-${VERSION}.zip" homebrew
-          ls -la homebrew/
-          if [ -f firmware.bin ]; then
-            mv firmware.bin "ESP32touch-${VERSION}.bin"
-            mv firmware.elf "ESP32touch-${VERSION}.elf"
-            echo "has_fw=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_fw=false" >> $GITHUB_OUTPUT
+          mkdir -p dist/homebrew dist/out
+          cp dist/hb/*.hb dist/homebrew/ || true
+          cd dist && zip -r "out/homebrew-${VERSION}.zip" homebrew || true
+          if [ -f fw/cyd_ili9341/firmware.bin ]; then
+            cp fw/cyd_ili9341/firmware.bin "out/ESP32touch-${VERSION}-ILI9341.bin"
+            cp fw/cyd_ili9341/firmware.elf "out/ESP32touch-${VERSION}-ILI9341.elf"
           fi
+          if [ -f fw/cyd_st7789/firmware.bin ]; then
+            cp fw/cyd_st7789/firmware.bin "out/ESP32touch-${VERSION}-ST7789.bin"
+            cp fw/cyd_st7789/firmware.elf "out/ESP32touch-${VERSION}-ST7789.elf"
+          fi
+          # artifact download may flatten paths
+          if [ -f fw/firmware.bin ] && [ ! -f out/ESP32touch-${VERSION}-ILI9341.bin ]; then
+            cp fw/firmware.bin "out/ESP32touch-${VERSION}.bin"
+          fi
+          ls -laR dist/out dist/fw 2>/dev/null || true
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## Firmware (Backlight GPIO 21)
+            - `*-ILI9341.bin` zuerst flashen (häufigstes gelbes Board)
+            - wenn Screen weiter schwarz: `*-ST7789.bin` versuchen
+
+            Alte Bins (vor diesem Release) hatten BL an GPIO 27 → schwarzer Screen.
           files: |
-            dist/homebrew-${{ steps.version.outputs.version }}.zip
+            dist/out/*
             dist/homebrew/*.hb
-            dist/ESP32touch-${{ steps.version.outputs.version }}.bin
-            dist/ESP32touch-${{ steps.version.outputs.version }}.elf
           fail_on_unmatched_files: false
           generate_release_notes: true
           draft: false
