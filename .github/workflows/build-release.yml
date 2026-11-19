@@ -36,6 +36,18 @@ jobs:
           pio run -e s032_test
           pio run -e s032_st7789
           pio run -e s032_st7789_inv
+      - name: Komplette Images bauen (Bootloader + Partitionen + App, Flash ab 0x0)
+        run: |
+          pip install "esptool<5"
+          BOOT_APP0=$(find ~/.platformio/packages/framework-arduinoespressif32 -name boot_app0.bin | head -n1)
+          test -n "$BOOT_APP0"
+          for env in s032_test s032_st7789 s032_st7789_inv; do
+            d=.pio/build/$env
+            esptool.py --chip esp32 merge_bin -o $d/full-$env.bin \
+              --flash_mode dio --flash_freq 40m --flash_size 4MB \
+              0x1000 $d/bootloader.bin 0x8000 $d/partitions.bin \
+              0xe000 "$BOOT_APP0" 0x10000 $d/firmware.bin
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: firmware-s032
@@ -43,10 +55,13 @@ jobs:
             .pio/build/s032_test/firmware.bin
             .pio/build/s032_st7789/firmware.bin
             .pio/build/s032_st7789_inv/firmware.bin
+            .pio/build/s032_test/full-s032_test.bin
+            .pio/build/s032_st7789/full-s032_st7789.bin
+            .pio/build/s032_st7789_inv/full-s032_st7789_inv.bin
 
   release:
     needs: [homebrew, firmware]
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.homebrew.result == 'success'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +70,6 @@ jobs:
           name: homebrew-hb
           path: dist/hb
       - uses: actions/download-artifact@v4
-        continue-on-error: true
         with:
           name: firmware-s032
           path: dist/fw
@@ -72,6 +86,10 @@ jobs:
             dir=$(basename $(dirname "$f"))
             cp "$f" "out/ESP32touch-${VERSION}-${dir}.bin"
           done
+          find fw -name 'full-*.bin' 2>/dev/null | while read f; do
+            name=$(basename "$f" .bin)
+            cp "$f" "out/ESP32touch-${VERSION}-${name}-FLASH-AB-0x0.bin"
+          done
           ls -la out/ || true
       - uses: softprops/action-gh-release@v2
         with:
@@ -80,13 +98,16 @@ jobs:
           body: |
             ## ESP32-2432S032
 
+            **Im Browser (ESP Tool) flashen: immer die Datei `*-FLASH-AB-0x0.bin` an Adresse 0x0!**
+            (Die Dateien ohne "FLASH-AB-0x0" sind nur die App und booten allein nicht.)
+
             **Zuerst Display-Test flashen:**
-            `*-s032_test.bin` → muss Rot/Grün/Blau + "DarkFox OK" zeigen
+            `*-full-s032_test-FLASH-AB-0x0.bin` → muss Rot/Grün/Blau + "DarkFox OK" zeigen
 
             Dann Vollfirmware:
-            `*-s032_st7789.bin`
+            `*-full-s032_st7789-FLASH-AB-0x0.bin`
 
-            Config: ST7789, BL=27, TFT_SDA_READ, 27MHz, kein USE_HSPI
+            Config: ST7789, BL=27, TFT_SDA_READ, 27MHz, TFT auf VSPI, SD auf HSPI
           files: |
             dist/out/*
             dist/homebrew/*.hb
