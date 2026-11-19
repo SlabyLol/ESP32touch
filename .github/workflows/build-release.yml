@@ -3,8 +3,6 @@ name: Build & Release
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -25,7 +23,6 @@ jobs:
         with:
           name: homebrew-hb
           path: homebrew/out/*.hb
-          if-no-files-found: error
 
   firmware:
     runs-on: ubuntu-latest
@@ -35,13 +32,15 @@ jobs:
         with:
           python-version: "3.11"
       - run: |
-          pip install -U pip platformio
+          pip install -U platformio
+          pio run -e s032_test
           pio run -e s032_st7789
           pio run -e s032_st7789_inv
       - uses: actions/upload-artifact@v4
         with:
           name: firmware-s032
           path: |
+            .pio/build/s032_test/firmware.bin
             .pio/build/s032_st7789/firmware.bin
             .pio/build/s032_st7789_inv/firmware.bin
 
@@ -79,12 +78,15 @@ jobs:
           tag_name: ${{ steps.version.outputs.version }}
           name: Release ${{ steps.version.outputs.version }}
           body: |
-            ## ESP32-2432S032 (ST7789, Backlight GPIO **27**)
+            ## ESP32-2432S032
 
-            1. **`*-s032_st7789.bin`** zuerst flashen
-            2. Falls Farben inverted: `*-s032_st7789_inv.bin`
+            **Zuerst Display-Test flashen:**
+            `*-s032_test.bin` → muss Rot/Grün/Blau + "DarkFox OK" zeigen
 
-            Nicht die alten `*-ILI9341` / BL21 Bins verwenden.
+            Dann Vollfirmware:
+            `*-s032_st7789.bin`
+
+            Config: ST7789, BL=27, TFT_SDA_READ, 27MHz, kein USE_HSPI
           files: |
             dist/out/*
             dist/homebrew/*.hb
