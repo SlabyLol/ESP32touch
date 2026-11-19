@@ -6,7 +6,11 @@
 #include <time.h>
 
 TFT_eSPI tft = TFT_eSPI();
-#define TFT_BL_PIN 27
+
+// CYD / gelbes Board: Backlight = GPIO 21
+#ifndef TFT_BL_PIN
+#define TFT_BL_PIN 21
+#endif
 
 #define SD_CS   5
 #define SD_MOSI 23
@@ -539,12 +543,23 @@ void handleListNav(int tx, int ty, int &selected, int &scroll, int count, void (
 void setup() {
   Serial.begin(115200);
   delay(1000);
+
+  // Backlight ZUERST an (CYD = GPIO 21)
   pinMode(TFT_BL_PIN, OUTPUT);
   digitalWrite(TFT_BL_PIN, HIGH);
+
   tft.init();
   tft.setRotation(1);
   tft.setTouch(calData);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(TFT_GREEN, TFT_BLACK);
+  tft.setFreeFont(&FreeSans12pt7b);
+  tft.drawString("DarkFox boot...", tft.width() / 2, tft.height() / 2);
+
   Serial.println("=== DarkFox Konsole ===");
+  Serial.printf("Backlight pin: %d\n", TFT_BL_PIN);
+
   waitForPin();
   drawStaticLayout();
   showStatus("Lese SD-Karte...");
