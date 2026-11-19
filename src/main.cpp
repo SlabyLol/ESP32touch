@@ -16,7 +16,9 @@ TFT_eSPI tft = TFT_eSPI();
 #define SD_MOSI 23
 #define SD_MISO 19
 #define SD_SCK  18
-SPIClass sdSPI(VSPI);
+// WICHTIG: SD auf HSPI. TFT_eSPI belegt standardmaessig VSPI (SPI);
+// eine zweite Instanz auf VSPI wuerde dem Display die Pins wegnehmen.
+SPIClass sdSPI(HSPI);
 
 const char* CONSOLE_PIN = "1234";
 
@@ -85,7 +87,10 @@ const int BTN_RUN_X  = 205, BTN_RUN_Y  = 200, BTN_RUN_W  = 105, BTN_RUN_H  = 32;
 unsigned long lastTouchTime = 0;
 const unsigned long TOUCH_DEBOUNCE_MS = 280;
 
-uint16_t calData[5] = { 300, 3600, 300, 3600, 1 };
+// Touch-Kalibrierung ist rotationsabhaengig: PIN-Screen = Hochformat (0), Rest = Querformat (1).
+// Eigene Werte: Env s032_calibrate flashen und Serial-Ausgabe hier eintragen.
+uint16_t calPortrait[5]  = { 300, 3600, 300, 3600, 0 };
+uint16_t calLandscape[5] = { 300, 3600, 300, 3600, 1 };
 
 struct KeyButton { int x, y, w, h; char label[4]; };
 KeyButton keys[12];
@@ -128,6 +133,7 @@ void drawPinDisplay(const String &input) {
 
 void drawPasswordScreen() {
   tft.setRotation(0);
+  tft.setTouch(calPortrait);
   tft.fillScreen(TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
   tft.setFreeFont(&FreeSans12pt7b);
@@ -156,7 +162,7 @@ bool waitForPin() {
     if (Serial.available()) {
       char c = Serial.read();
       if (c == '\n') {
-        if (input == CONSOLE_PIN) { tft.setRotation(1); return true; }
+        if (input == CONSOLE_PIN) { tft.setRotation(1); tft.setTouch(calLandscape); return true; }
         input = ""; drawPinDisplay(input);
       } else if (c == 8 || c == 127) {
         if (input.length() > 0) input.remove(input.length() - 1);
@@ -171,7 +177,7 @@ bool waitForPin() {
       char key = getPressedKey(tx, ty);
       if (key == 'C') { input = ""; drawPinDisplay(input); }
       else if (key == 'O') {
-        if (input == CONSOLE_PIN) { tft.setRotation(1); return true; }
+        if (input == CONSOLE_PIN) { tft.setRotation(1); tft.setTouch(calLandscape); return true; }
         input = ""; drawPinDisplay(input);
       } else if (key >= '0' && key <= '9') {
         input += key; drawPinDisplay(input);
@@ -550,7 +556,6 @@ void setup() {
 
   tft.init();
   tft.setRotation(1);
-  tft.setTouch(calData);
   tft.fillScreen(TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
